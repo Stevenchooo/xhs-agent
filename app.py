@@ -168,32 +168,62 @@ def render_sidebar():
         st.markdown(f"<small style='color:#888'>{ACCOUNT_DESC}</small>", unsafe_allow_html=True)
         st.markdown("---")
 
-        page = st.radio(
-            "📋 功能菜单",
-            [
-                "── 🔧 运营工作流 ──",
-                "🌅 晨间工作台",
-                "📌 今日执行",
-                "⏱️ 发后跟踪器",
-                "💬 互动任务站",
+        menu_options = [
+            "── 🔧 运营工作流 ──",
+            "🌅 晨间工作台",
+            "📌 今日执行",
+            "⏱️ 发后跟踪器",
+            "💬 互动任务站",
+        ]
+
+        if OPENAI_API_KEY:
+            menu_options.extend([
                 "🏥 账号体检",
                 "📈 后链路分析",
                 "🛡️ 合规自查",
-                "📚 经验宝库",
+            ])
+
+        menu_options.extend([
+            "📚 经验宝库",
+        ])
+
+        if OPENAI_API_KEY:
+            menu_options.extend([
                 "⚡ 热点快反",
-                "── 📦 内容与数据 ──",
-                "📊 数据复盘",
-                "🏠 运营仪表盘",
-                "💡 选题灵感库",
+            ])
+
+        menu_options.extend([
+            "── 📦 内容与数据 ──",
+            "📊 数据复盘",
+            "🏠 运营仪表盘",
+            "💡 选题灵感库",
+        ])
+
+        if OPENAI_API_KEY:
+            menu_options.extend([
                 "✍️ AI内容生成",
-                "📅 发布计划",
-                "🎯 涨粉策略",
+            ])
+
+        menu_options.extend([
+            "📅 发布计划",
+            "🎯 涨粉策略",
+        ])
+
+        if OPENAI_API_KEY:
+            menu_options.extend([
                 "🔥 爆款实验室",
                 "💬 评论引流",
-                "🏆 竞品雷达",
-                "📝 笔记管理",
-                "⚙️ 设置",
-            ],
+            ])
+
+        menu_options.extend([
+            "🏆 竞品雷达",
+            "📝 笔记管理",
+            "⚙️ 设置",
+        ])
+
+        page = st.radio(
+            "📋 功能菜单",
+            menu_options,
             label_visibility="collapsed"
         )
 
@@ -552,7 +582,7 @@ def render_dashboard():
 # ==================== 页面：选题灵感库 ====================
 def render_topic_ideas():
     st.markdown("## 💡 选题灵感库")
-    st.markdown("为你的「AI油画·当代艺术」账号精选的选题灵感，点击即可一键生成内容")
+    st.markdown("为你的「AI油画·当代艺术」账号精选的选题灵感，可在本地环境中一键生成内容。")
 
     for topic_category, topics in TOPIC_IDEAS.items():
         st.markdown(f"### 🎨 {topic_category}")
@@ -561,35 +591,34 @@ def render_topic_ideas():
             with cols[i % 2]:
                 st.markdown(f"""<div class="topic-card">📌 {topic}</div>""", unsafe_allow_html=True)
 
-                col_a, col_b = st.columns(2)
-                with col_a:
-                    if st.button("✍️ 生成内容", key=f"gen_{topic_category}_{i}", use_container_width=True):
-                        st.session_state["quick_topic"] = topic
-                        st.session_state["quick_category"] = topic_category
-                with col_b:
-                    if st.button("💡 生成标题", key=f"title_{topic_category}_{i}", use_container_width=True):
-                        st.session_state["quick_title_topic"] = topic
-                        st.session_state["quick_title_category"] = topic_category
+                if OPENAI_API_KEY:
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        if st.button("✍️ 生成内容", key=f"gen_{topic_category}_{i}", use_container_width=True):
+                            st.session_state["quick_topic"] = topic
+                            st.session_state["quick_category"] = topic_category
+                    with col_b:
+                        if st.button("💡 生成标题", key=f"title_{topic_category}_{i}", use_container_width=True):
+                            st.session_state["quick_title_topic"] = topic
+                            st.session_state["quick_title_category"] = topic_category
 
         st.markdown("---")
 
-    # 处理快速生成
-    if st.session_state.get("quick_topic"):
-        topic = st.session_state.pop("quick_topic")
-        cat = st.session_state.pop("quick_category", "AI油画创作")
+    if OPENAI_API_KEY:
+        # 处理快速生成
+        if st.session_state.get("quick_topic"):
+            topic = st.session_state.pop("quick_topic")
+            cat = st.session_state.pop("quick_category", "AI油画创作")
 
-        # 根据选题类别匹配内容类型
-        type_map = {
-            "AI油画创作": "AI油画创作过程",
-            "海外当代画家": "画家作品赏析",
-            "色彩与技法": "色彩/构图解析",
-            "艺术故事与趣闻": "画家故事/八卦",
-        }
-        content_type = type_map.get(cat, "画家作品赏析")
+            # 根据选题类别匹配内容类型
+            type_map = {
+                "AI油画创作": "AI油画创作过程",
+                "海外当代画家": "画家作品赏析",
+                "色彩与技法": "色彩/构图解析",
+                "艺术故事与趣闻": "画家故事/八卦",
+            }
+            content_type = type_map.get(cat, "画家作品赏析")
 
-        if not OPENAI_API_KEY:
-            st.error("请先在设置页面配置 OpenAI API Key")
-        else:
             st.markdown(f"### ✍️ 正在为「{topic}」生成内容...")
             with st.spinner("🤖 AI正在创作中..."):
                 result = generate_content(cat, content_type, topic)
@@ -608,13 +637,10 @@ def render_topic_ideas():
                 full_text = f"{result['title']}\n\n{result['body']}\n\n{' '.join(result.get('hashtags', []))}"
                 st.text_area("📋 完整文案（方便复制）", full_text, height=300)
 
-    if st.session_state.get("quick_title_topic"):
-        topic = st.session_state.pop("quick_title_topic")
-        cat = st.session_state.pop("quick_title_category", "AI油画创作")
+        if st.session_state.get("quick_title_topic"):
+            topic = st.session_state.pop("quick_title_topic")
+            cat = st.session_state.pop("quick_title_category", "AI油画创作")
 
-        if not OPENAI_API_KEY:
-            st.error("请先在设置页面配置 OpenAI API Key")
-        else:
             st.markdown(f"### 💡 为「{topic}」生成标题...")
             with st.spinner("🤖 正在生成标题..."):
                 titles = generate_titles(cat, topic, 6)
@@ -2277,15 +2303,15 @@ def render_engagement_patrol():
                                      placeholder="例如：Richter、油画质感、印象派...",
                                      key="eg_keywords")
 
-        if st.button("🤖 生成巡逻评论", type="primary", use_container_width=True, key="gen_patrol_btn"):
-            if not OPENAI_API_KEY:
-                st.error("请先在设置页面配置 OpenAI API Key")
-            else:
+        if OPENAI_API_KEY:
+            if st.button("🤖 生成巡逻评论", type="primary", use_container_width=True, key="gen_patrol_btn"):
                 kw_list = [k.strip() for k in eg_keywords.split("、") if k.strip()] if eg_keywords else quota["search_keywords"]
                 with st.spinner("🤖 正在生成巡逻评论..."):
                     result = generate_engagement_batch(eg_scenario, kw_list, eg_count)
                 st.success("✅ 评论生成完成！稍作修改后使用")
                 st.markdown(result)
+        else:
+            st.info("💡 在本地配置 OpenAI API Key 后即可一键生成巡逻评论。")
 
     # ===== Tab 3: 回复助手 =====
     with tab_replies:
@@ -2302,16 +2328,17 @@ def render_engagement_patrol():
                                     placeholder="评论1：太好看了，请问用的什么工具？\n评论2：Richter的画我也很喜欢...\n评论3：求教程！",
                                     key="reply_input")
 
-        if st.button("🤖 生成回复建议", type="primary", use_container_width=True, key="gen_replies_btn"):
-            if not reply_input:
-                st.warning("请粘贴评论内容")
-            elif not OPENAI_API_KEY:
-                st.error("请先在设置页面配置 OpenAI API Key")
-            else:
-                with st.spinner("🤖 正在生成回复建议..."):
-                    result = generate_reply_suggestions(reply_input)
-                st.success("✅ 回复建议生成完成！")
-                st.markdown(result)
+        if OPENAI_API_KEY:
+            if st.button("🤖 生成回复建议", type="primary", use_container_width=True, key="gen_replies_btn"):
+                if not reply_input:
+                    st.warning("请粘贴评论内容")
+                else:
+                    with st.spinner("🤖 正在生成回复建议..."):
+                        result = generate_reply_suggestions(reply_input)
+                    st.success("✅ 回复建议生成完成！")
+                    st.markdown(result)
+        else:
+            st.info("💡 在本地配置 OpenAI API Key 后即可自动生成高质量回复建议。")
 
     # ===== Tab 4: 记录互动 =====
     with tab_log:
