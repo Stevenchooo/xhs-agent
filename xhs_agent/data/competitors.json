@@ -1,0 +1,156 @@
+{
+  "competitors": [
+    {
+      "nickname": "张韵怡",
+      "followers": 0,
+      "niche": "原创油画-展示",
+      "content_style": "真人出镜展示画作-双语标题-视频",
+      "posting_frequency": "",
+      "strength": "人物入镜+展示画作尺寸对比=11.2万赞TOP1",
+      "weakness": "",
+      "notes": "原创油画搜索Top1 真人持画封面 视频格式",
+      "id": 1,
+      "created_at": "2026-03-09T15:20:16.099483",
+      "viral_posts": [
+        {
+          "title": "展示我的画 Show my painting",
+          "views": 0,
+          "likes": 112000,
+          "recorded_at": "2026-03-09T15:20:16.099716"
+        }
+      ]
+    },
+    {
+      "nickname": "祝福",
+      "followers": 0,
+      "niche": "原创油画-展示",
+      "content_style": "展示成品-背影入镜-视频",
+      "posting_frequency": "",
+      "strength": "简洁直白标题+真人展示画作背面=5.9万赞",
+      "weakness": "",
+      "notes": "Top2 标题极简 展示画框背面揭示作品",
+      "id": 2,
+      "created_at": "2026-03-09T15:20:16.099875",
+      "viral_posts": [
+        {
+          "title": "给大家展示一下我的作品",
+          "views": 0,
+          "likes": 59000,
+          "recorded_at": "2026-03-09T15:20:16.099990"
+        }
+      ]
+    },
+    {
+      "nickname": "汪汪小熊Pawton",
+      "followers": 0,
+      "niche": "抽象艺术",
+      "content_style": "抽象画特写-制造身份认同-图文",
+      "posting_frequency": "",
+      "strength": "排他性标题制造身份认同=3.1万赞 高饱和蓝紫色漩涡特写",
+      "weakness": "",
+      "notes": "Top3 图文格式 标题用排他性钩子 画面高饱和色彩",
+      "id": 3,
+      "created_at": "2026-03-09T15:20:16.100115",
+      "viral_posts": [
+        {
+          "title": "仅分享给有艺术细菌的人",
+          "views": 0,
+          "likes": 31000,
+          "recorded_at": "2026-03-09T15:20:16.100238"
+        }
+      ]
+    },
+    {
+      "nickname": "Osaki nana",
+      "followers": 0,
+      "niche": "原创油画-抽象彩色",
+      "content_style": "高饱和单色主题油画-极简标题-视频为主",
+      "posting_frequency": "高频",
+      "strength": "Top10占3席 强色彩冲击力+极简标题 蓝色粉色表现最好",
+      "weakness": "",
+      "notes": "Top10出现3次(1.8万/8617/4847) 真人创作过程视频 单色主题系列化",
+      "id": 4,
+      "created_at": "2026-03-09T15:20:16.100364",
+      "viral_posts": [
+        {
+          "title": "一抹彩",
+          "views": 0,
+          "likes": 18000,
+          "recorded_at": "2026-03-09T15:20:16.100495"
+        },
+        {
+          "title": "Blue",
+          "views": 0,
+          "likes": 8617,
+          "recorded_at": "2026-03-09T15:20:16.100626"
+        },
+        {
+          "title": "限时返场",
+          "views": 0,
+          "likes": 4847,
+          "recorded_at": "2026-03-09T15:20:16.100767"
+        }
+      ]
+    },
+    {
+      "nickname": "刘梦迪画",
+      "followers": 0,
+      "niche": "油画-作品展示",
+      "content_style": "作品集锦-画廊场景-图文",
+      "posting_frequency": "",
+      "strength": "用高光时刻+作品合集概念 画廊/工作室场景=1.2万赞",
+      "weakness": "",
+      "notes": "Top5 真人站在画前 展示被收藏作品 有品牌感",
+      "id": 5,
+      "created_at": "2026-03-09T15:20:16.100908",
+      "viral_posts": [
+        {
+          "title": "我的艺术高光时刻 2022年已被收藏作品集锦",
+          "views": 0,
+          "likes": 12000,
+          "recorded_at": "2026-03-09T15:20:16.101042"
+        }
+      ]
+    },
+    {
+      "nickname": "Blueartist",
+      "followers": 0,
+      "niche": "原创油画-工作室",
+      "content_style": "工作室全景-艺术家坐在画中间-图文",
+      "posting_frequency": "",
+      "strength": "工作室场景展示多幅作品=5270赞 艺术家坐在作品中间有叙事感",
+      "weakness": "",
+      "notes": "图文 工作室全景 人坐在大幅画作中间 诗意标题",
+      "id": 6,
+      "created_at": "2026-03-09T15:20:16.101185",
+      "viral_posts": [
+        {
+          "title": "尽情想象 连结",
+          "views": 0,
+          "likes": 5270,
+          "recorded_at": "2026-03-09T15:20:16.101415"
+        }
+      ]
+    },
+    {
+      "nickname": "画画永动机-钻蓝艺术",
+      "followers": 0,
+      "niche": "油画-变现",
+      "content_style": "收入展示型-工作室场景-图文",
+      "posting_frequency": "",
+      "strength": "用收入数字做钩子 赚了100W=4530赞 引发好奇和讨论",
+      "weakness": "",
+      "notes": "图文 画室场景+收入数字标题 强烈好奇心驱动",
+      "id": 7,
+      "created_at": "2026-03-09T15:20:16.101626",
+      "viral_posts": [
+        {
+          "title": "去年靠画画赚了100W今年目标定多少啊",
+          "views": 0,
+          "likes": 4530,
+          "recorded_at": "2026-03-09T15:20:16.101862"
+        }
+      ]
+    }
+  ]
+}
