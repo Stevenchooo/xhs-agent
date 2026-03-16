@@ -187,7 +187,7 @@ Prompt放评论区了 想试的自取
 "这是哪个美术馆的画？"
 
 ???
-姐妹 这是马路
+朋友 这是马路
 
 然后我突发奇想
 把这张照片丢给AI
@@ -706,9 +706,9 @@ AI没学到的：
         },
         "prompts": [
             {
-                "desc": "图1·封面：春天花园的AI油画（印象派风格）",
-                "prompt": "A breathtaking impressionist oil painting of a spring garden in full bloom, cherry blossoms and wisteria in soft pink and lavender, dappled sunlight through fresh green leaves, visible thick impasto brushstrokes, Monet-inspired plein air style, morning dew on petals, canvas texture, warm golden light, gallery quality fine art --ar 3:4 --s 800 --v 6.1",
-                "note": "封面加文字「我的春天 是AI画出来的🌸」选最鲜艳的春天色调",
+                "desc": "图1·封面：春天花园的AI油画（高饱和度+特写+留白）",
+                "prompt": "A stunning and vibrant Impressionist oil painting of a spring garden at golden hour, extreme macro close-up of thick impasto paint texture creating blooming cherry blossoms and fresh green leaves, rich saturated pink and emerald green palette, visible expressive brushstrokes, dappled sunlight, fine art museum quality, vertical 3:4 composition, bottom area slightly darker for text space --ar 3:4 --s 800 --v 6.1",
+                "note": "选色彩最鲜艳的一张做封面，底部加白字「用AI画了9个春天的瞬间🌸｜哪个是你的春天」",
             },
             {
                 "desc": "图2：春天的城市街道（樱花/玉兰）",
@@ -746,7 +746,7 @@ AI没学到的：
                 "note": "最后一张做互动引导 呼应官方活动主题",
             },
         ],
-        "cover_text": "我的春天 是AI画出来的🌸",
+        "cover_text": "用AI画了9个春天的瞬间🌸｜哪个是你的春天",
         "title": "用AI画了9个春天的瞬间🌸｜哪个是你的春天",
         "body": """春天是什么？
 
@@ -764,7 +764,7 @@ AI没学到的：
 
 这些都是春天吧
 
-📌 于是我用AI把这些瞬间都画成了油画
+📌 于是我用AI把这些瞬间都画成了油画（AI辅助创作🤖）
 
 印象派的光
 厚涂的颜料
@@ -790,9 +790,12 @@ AI没学到的：
 
 这组图存着当壁纸也很好看🌸
 
+喜欢的朋友先🌟Mark住，文末有完整的AI绘画参数，春天出门找不到灵感可以翻出来照着画！
+
 你的春天是什么？
 在评论区跟我交换吧👇
 
+⚠️ 本文图片由AI辅助生成
 #交换春天""",
         "hashtags": "#交换春天 #油画 #AI绘画 #AI油画 #春天 #印象派 #Midjourney #提示词分享 #治愈系 #值得收藏",
     },
@@ -894,6 +897,87 @@ AI没学到的：
 ⚠️ 本文图片由AI辅助生成""",
         "hashtags": "#油画 #蓝色 #AI绘画 #AI油画 #治愈系 #Midjourney #色彩美学 #提示词分享 #值得收藏 #当代艺术",
     },
+
+    # ==================== Day 9：高净值男性受众特化·天价艺术（Cy Twombly） ====================
+    {
+        "day_label": "Day 9",
+        "type": "画家介绍 + AI复刻",
+        "theme": "Cy Twombly：黑板上乱涂乱画卖4.5亿",
+        "why": "基于3/10爆款数据（80%男性，65%>35岁），高净值熟龄人群极度喜欢「天价+反直觉」的商业/艺术逻辑探讨。这是完美的复刻版爆款公式",
+        "time": "21:00",
+        "prompts": [
+            {
+                "desc": "图1·封面：模仿Twombly的黑板涂鸦",
+                "prompt": "Abstract painting in Cy Twombly blackboard style, continuous white looping scribbles on a dark grey chalkboard background, expressive and chaotic chalk-like lines, energetic gestures, large scale contemporary art masterpiece, dark and dramatic atmosphere, vertical 3:4, leaving empty space at the bottom for text --ar 3:4 --s 750 --v 6.1",
+                "note": "封面用这张，加白字粗体：「黑板上乱画一通→拍出4.5亿」",
+            },
+            {
+                "desc": "图2：Twombly原作《无题(纽约市)》（网上下载）",
+                "prompt": "（不需要AI生成，去网上下载Cy Twombly《Untitled (New York City)》高清图）",
+                "note": "展示这幅卖出7050万美元的原作",
+            },
+            {
+                "desc": "图3：AI模仿其彩色时期作品",
+                "prompt": "Abstract expressionist painting in Cy Twombly style, chaotic scribbles and energetic paint drips, vibrant red yellow and pink marks on a huge white canvas canvas, raw emotional energy, childish but sophisticated mark-making, museum quality contemporary art --ar 3:4 --s 800 --v 6.1",
+                "note": "展示他不是只会画黑板",
+            },
+            {
+                "desc": "图4：AI模仿其玫瑰系列",
+                "prompt": "Abstract painting of blooming roses in Cy Twombly style, massive scale dripping red and pink paint, poetic and melancholic atmosphere, words scribbled faintly in the background, expressive gestural brushwork, contemporary fine art --ar 3:4 --s 750 --v 6.1",
+                "note": "",
+            },
+        ],
+        "cover_text": "在黑板上乱涂乱画居然拍出4.5亿💰｜是天才还是骗局",
+        "title": "黑板上乱涂乱画居然卖了4.5亿💰｜凭什么这么贵",
+        "body": """你能想象吗？
+一块看起来就像小孩在黑板上乱涂乱画的画布
+在苏富比拍卖行拍出了7050万美元（约4.5亿人民币）🤯
+
+他就是「Cy Twombly」赛·托姆布雷
+当代艺术史上最具争议，但也最受顶级藏家追捧的美国大师
+
+🎨 他到底在画什么？
+
+这幅卖出天价的《无题(纽约市)》
+就是在一块深灰色的画布上
+用白色的蜡笔画了整整6排连续的圈圈
+
+很多人看的第一眼反应是：
+“就这？我上幼儿园的儿子画得都比他好！”
+“这绝对是洗钱骗局！”
+
+但这恰恰是这幅画的牛逼之处👇
+
+📌 为什么「乱涂乱画」反而这么值钱？
+
+在这幅画诞生之前，艺术都在教人怎么画得“像”
+但Twombly在做什么？
+他为了忘掉自己极其扎实的学院派绘画技巧
+关在黑屋子里，在黑暗中闭着眼睛画画
+
+他不是在画一个“圈”
+他是在画“画圈的这个动作”本身
+他在记录一种纯粹的、连续的、没有任何目的性的能量流动
+
+这不是技巧，这是解构规则的哲学 ✨
+而在顶级资本圈，能够重新定义规则的东西，就是最贵的。
+
+🤖 我让AI学他的黑板涂鸦（AI辅助创作🤖）
+
+用Midjourney模仿了Twombly的黑板风格
+关键Prompt：
+「Cy Twombly blackboard style + continuous white looping scribbles + dark grey chalkboard background」
+
+说实话，AI能精准模仿出那种圈圈的形状
+但总觉得太“规矩”了——
+少了他当年坐在朋友肩膀上，在巨大画布上滑动时那种失控的激情
+
+你觉得这是天才的哲学，还是资本的炒作？
+评论区聊聊👇
+
+⚠️ 本文部分图片由AI辅助生成""",
+        "hashtags": "#当代艺术 #CyTwombly #艺术收藏 #AI绘画 #画家推荐 #投资逻辑 #油画 #AI油画 #拍卖 #艺术史",
+    },
 ]
 
 
@@ -944,11 +1028,11 @@ def get_today_package() -> dict:
         # 星期→内容包映射（基于第1周数据更新：互动率OK但曝光低，优先高冲击力内容）
         # 数据：封面CTR6.3%✅ 点赞率25%✅ 收藏率7.1%✅ 但曝光仅386→需要加量+加冲击力标题
         weekday_map = {
-            0: 0,  # 周一→视觉反转（冲高曝光）
-            1: 1,  # 周二→画家介绍Richter（信息差内容）
-            2: 11,  # 周三→蓝色AI油画合集🆕（竞品验证蓝色=点赞王，CTR冲8%）
-            3: 6,  # 周四→画家故事Flora（轻松八卦）
-            4: 4,  # 周五→90后画家合集（高收藏型）
+            0: 12, # 周一→Cy Twombly（复制爆款公式：反差+金钱+悬疑）
+            1: 6,  # 周二→Flora（90后画家一幅画2000万，延续天价路线）
+            2: 8,  # 周三→AI vs Hockney对比（话题性冲评论）
+            3: 1,  # 周四→画家介绍Richter（信息差内容）
+            4: 11, # 周五→蓝色AI油画合集🆕（竞品验证蓝色=点赞王，CTR冲8%）
             5: 5,  # 周六→光影解析（深度长文周末发）
             6: 7,  # 周日→莫兰迪AI油画合集（视觉治愈）
         }
@@ -971,7 +1055,7 @@ def get_weekly_packages() -> list:
     today = datetime.datetime.now()
     packages = []
 
-    weekday_map = {0: 0, 1: 1, 2: 11, 3: 6, 4: 4, 5: 5, 6: 7}
+    weekday_map = {0: 12, 1: 6, 2: 8, 3: 1, 4: 11, 5: 5, 6: 7}
 
     for i in range(7):
         date = today + datetime.timedelta(days=i)
