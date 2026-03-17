@@ -38,3 +38,9 @@ venv.bak/
 # Ignore large/generated data folders if any
 xhs_agent/data/废图/
 mc_table_analyzer/output/
+xhs_agent/data/media/
+
+# Runtime screenshots / temp images in data
+xhs_agent/data/*.png
+xhs_agent/data/*.jpg
+xhs_agent/data/*.jpeg

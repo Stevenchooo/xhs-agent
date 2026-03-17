@@ -2,33 +2,119 @@
 工作流：Agent出Prompt → 用户执行生成 → 用户反馈结果 → Agent出配套文案
 """
 
-from openai import OpenAI
-from .config import OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL, CONTENT_TYPES
+from types import SimpleNamespace
+
+from anthropic import Anthropic
+
+from . import config as runtime_config
+from .config import CONTENT_TYPES
+
+
+def _extract_text(response) -> str:
+    """Extract plain text from an Anthropic message response."""
+    parts = []
+    for block in getattr(response, "content", []) or []:
+        if getattr(block, "type", "") == "text":
+            parts.append(block.text)
+    return "".join(parts).strip()
+
+
+class _ClaudeCompatCompletions:
+    """Small adapter that mimics the OpenAI chat.completions interface."""
+
+    def __init__(self, client: Anthropic):
+        self._client = client
+
+    def create(
+        self,
+        model: str,
+        messages: list,
+        temperature: float = 0.7,
+        max_tokens: int = 1024,
+        **kwargs,
+    ):
+        del kwargs
+
+        system_messages = []
+        anthropic_messages = []
+
+        for message in messages:
+            role = message.get("role", "user")
+            content = message.get("content", "")
+
+            if role == "system":
+                if content:
+                    system_messages.append(str(content))
+                continue
+
+            anthropic_messages.append({
+                "role": role,
+                "content": content,
+            })
+
+        response = self._client.messages.create(
+            model=model or _get_model(),
+            max_tokens=max_tokens,
+            temperature=temperature,
+            system="\n\n".join(system_messages) if system_messages else None,
+            messages=anthropic_messages or [{"role": "user", "content": ""}],
+        )
+
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=_extract_text(response)))],
+            raw_response=response,
+        )
+
+
+class _ClaudeCompatClient:
+    """Expose Anthropic through the subset of API shape already used in this app."""
+
+    def __init__(self, api_key: str, base_url: str):
+        client_kwargs = {"api_key": api_key}
+        if base_url:
+            client_kwargs["base_url"] = base_url
+
+        client = Anthropic(**client_kwargs)
+        self.chat = SimpleNamespace(completions=_ClaudeCompatCompletions(client))
 
 
 def _get_client():
-    """获取 OpenAI 客户端"""
-    return OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
+    """获取 Claude 客户端（兼容现有 OpenAI 风格调用）。"""
+    config = runtime_config.get_ai_runtime_config()
+    api_key = (config.get("api_key") or "").strip()
+    if not api_key:
+        raise ValueError("未配置 Claude API Key，请先在设置页面填写，或设置环境变量 CLAUDE_CODE_API_KEY / ANTHROPIC_API_KEY")
+    return _ClaudeCompatClient(api_key=api_key, base_url=config.get("base_url") or "")
 
 
-SYSTEM_PROMPT = """你是一个资深的小红书艺术博主和内容运营专家。你深度了解当代油画艺术、AI绘画技术，以及小红书平台的内容风格和算法机制。
+def _get_model() -> str:
+    """获取当前生效的 Claude 模型名。"""
+    return runtime_config.get_ai_runtime_config().get("model", "claude-sonnet-4-6")
 
-你的专业背景：
-- 精通西方当代油画，熟悉Gerhard Richter、David Hockney、Jenny Saville、Peter Doig、Cecily Brown、Anselm Kiefer、Adrian Ghenie等当代重要画家
-- 擅长用AI工具（Midjourney/Stable Diffusion/DALL-E/ComfyUI）生成油画风格作品
-- 精通Midjourney提示词编写，熟悉各种参数（--ar, --s, --c, --v, --style等）
-- 了解油画的技法、色彩理论、构图法则、艺术史脉络
-- 能用通俗易懂的语言给大众讲解艺术知识，降低艺术门槛
 
-写作风格要求：
-1. 有「艺术感」但不做作，像一个有品位的朋友在分享好东西
-2. 善用emoji增加阅读节奏感（🎨🖼️✨💡📌等）
-3. 短句为主，段落清晰，适合手机阅读
-4. 专业术语要自然融入，不堆砌不炫耀
-5. 标题要兼顾「艺术感」和「点击欲」
-6. 图片描述要具体，帮助读者理解画作
-7. 结尾引导互动（你最喜欢哪幅？/你觉得AI能取代画家吗？）
-8. 合理使用话题标签
+# 兼容现有函数体，避免批量改动所有 `model=...` 调用点。
+OPENAI_MODEL = _get_model()
+
+
+SYSTEM_PROMPT = """你是一个资深的小红书艺术博主和内容运营专家，深谙「爆款密码」。你深度了解当代油画艺术、AI绘画技术，以及小红书平台的内容风格和算法机制。
+
+【你的核心受众画像（极度重要）】
+- 👦 性别：男性为主（80%）
+- 💼 年龄/社会阶层：35岁以上熟龄人群（占65%），一二线城市及海外高净值人群
+- 🎯 兴趣偏好：艺术史背后的商业逻辑、为什么这幅画值天价、AI技术前沿、深度知识、投资与财富密码
+
+【你的专业背景】
+- 精通西方当代油画，熟悉Gerhard Richter、Cy Twombly、Lucian Freud等天价当代画家，深谙艺术史上的商业八卦和反常理的冷知识
+- 擅长用AI工具（Midjourney/SD）生成油画风格作品，并能用理性的技术逻辑解释参数
+- 懂艺术市场，能把「天价拍卖」和「艺术审美」结合起来讲给高净值人群听
+
+【写作风格与爆款要求】
+1. 【强悬念】标题和前3句话必须制造巨大的反差、金钱冲突或悬念（如“画模糊卖3亿”、“黑板上乱涂乱画值4.5亿”）。
+2. 【理性且有深度】目标受众是高净值成熟男性。语气必须专业、理性、有深度、不轻浮。
+3. 【红线警告】绝对禁止使用「绝绝子」、「姐妹们」、「家人们」、「贴贴」等低幼化/过度女性化词汇！改为「朋友们」或直接省略称呼。
+4. 【社交货币】让读者看完觉得“学到了一个装杯的冷知识，原来这画这么贵是有道理的，我要转发给朋友探讨”。
+5. 【排版与情绪】善用emoji增加阅读节奏感（🎨🤫💰🤯📈等），短句为主，段落清晰，信息密度高。
+6. 【互动设计】结尾抛出一个有争议或商业探讨价值的问题（如：你觉得这是天才还是炒作？）。
 """
 
 PROMPT_EXPERT = """你是一位顶级的AI绘画提示词工程师，尤其擅长生成油画风格的AI作品。
@@ -364,19 +450,22 @@ def generate_content(
 📌 需包含关键词：{keywords_str}
 
 创作要点：
-- 这是一个以「AI油画创作」和「海外当代画家作品分享」为主的小红书账号
-- 内容要有艺术深度但不晦涩，让普通人也能感受到艺术的魅力
-- 如果涉及画家，要有准确的信息（国籍、年代、风格流派）
-- 如果涉及AI创作，要分享实用的技巧或参数
-- 图片描述要具体，方便配图
+- 摒弃“纯画作分享”和“平淡赞美”的路线，走【猎奇/揭秘/故事/反差】路线！
+- 开头必须抓人：直接抛出最违背常理、最震撼的数字（如金额）、或最大的悬念。
+- 正文核心：讲一个引人入胜的故事（比如一幅画为何卖天价、画中隐藏的秘密、画家的离奇经历）。提供给读者可以拿去“装杯”的社交货币。
+- 封面极其重要：必须在【配图建议】里明确指示要在封面上加上醒目、有反差感的大字标题（如“放大后细思极恐”、“卖了3个亿”等）。纯净的风景画没人点！
+- 结尾引导：用提问或对比引导评论（例如：如果是你，你觉得这幅画值这个价吗？）
 
 请按以下格式输出：
 
 【标题】
-（一个兼顾艺术感和吸引力的标题，不超过20字，可以使用emoji）
+（必须制造反差、包含冲突感或悬念，带emoji，不超过20字）
+
+【封面大字建议】
+（必须提供：建议写在封面图上的大字文案，字体要大要醒目，直击痛点/悬念）
 
 【正文】
-（完整的小红书笔记正文，500-800字，使用emoji分段，语言要有品位但不做作）
+（500-800字，讲故事为主，避免空洞的词藻堆砌，用emoji分段增加可读性）
 
 【话题标签】
 （8-10个相关的话题标签，用 # 号标注，包含大流量标签和精准长尾标签）
@@ -1619,6 +1708,7 @@ def _parse_content(raw: str) -> dict:
     """解析AI生成的内容为结构化数据"""
     result = {
         "title": "",
+        "cover_text": "",
         "body": "",
         "hashtags": [],
         "cover_suggestion": ""
@@ -1628,6 +1718,8 @@ def _parse_content(raw: str) -> dict:
     for section in sections:
         if section.startswith("标题】"):
             result["title"] = section.replace("标题】", "").strip().split("\n")[0].strip()
+        elif section.startswith("封面大字建议】"):
+            result["cover_text"] = section.replace("封面大字建议】", "").strip()
         elif section.startswith("正文】"):
             result["body"] = section.replace("正文】", "").strip()
         elif section.startswith("话题标签】"):
@@ -1643,5 +1735,9 @@ def _parse_content(raw: str) -> dict:
             result["cover_suggestion"] = section.replace("图片排列建议】", "").strip()
         elif section.startswith("发布时间建议】"):
             result["publish_time_tip"] = section.replace("发布时间建议】", "").strip()
+
+    # 如果有专门的封面大字建议，追加到配图建议中以防丢失
+    if result["cover_text"] and "封面大字" not in result["cover_suggestion"]:
+        result["cover_suggestion"] = f"【封面必须加的大字】：{result['cover_text']}\n\n" + result["cover_suggestion"]
 
     return result

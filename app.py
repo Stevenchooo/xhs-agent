@@ -9,9 +9,9 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
+import xhs_agent.config as cfg
 from xhs_agent.config import (
-    CONTENT_CATEGORIES, CONTENT_TYPES, OPENAI_API_KEY,
-    OPENAI_BASE_URL, OPENAI_MODEL, ACCOUNT_NICHE, ACCOUNT_DESC,
+    CONTENT_CATEGORIES, CONTENT_TYPES, ACCOUNT_NICHE, ACCOUNT_DESC,
     TOPIC_IDEAS, CONTENT_SOP, ARTIST_DATABASE,
     ENGAGEMENT_TACTICS, MONETIZATION_ROADMAP,
     COMMENT_TEMPLATES, CONTENT_REPURPOSE_MAP, VIRAL_SCORE_DIMENSIONS,
@@ -20,6 +20,7 @@ from xhs_agent.config import (
     ALGORITHM_WEIGHTS, TRAFFIC_POOL_MODEL, CREDIT_SCORE_RULES,
     PLATFORM_RED_LINES, CONTENT_GOLDEN_RULES,
     COVER_TEMPLATES, COVER_UNIVERSAL_RULES,
+    AUDIENCE_PERSONA,
 )
 from xhs_agent.strategy import (
     get_current_stage, get_today_posting_times, get_weekly_plan,
@@ -73,92 +74,534 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ==================== 自定义样式（艺术感配色） ====================
+# ==================== 自定义样式（赛博朋克科技感） ====================
 st.markdown("""
 <style>
-    .main-header {
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 40%, #0f3460 70%, #533483 100%);
-        padding: 2rem 2rem;
-        border-radius: 16px;
-        margin-bottom: 1.5rem;
-        color: white;
-        text-align: center;
-        border: 1px solid rgba(255,255,255,0.1);
+    /* ── Google Fonts ── */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;600&display=swap');
+
+    /* ── CSS 变量 ── */
+    :root {
+        --cyan: #00f5ff;
+        --purple: #bd00ff;
+        --green: #00ff87;
+        --pink: #ff0099;
+        --dark: #020408;
+        --dark2: #060d14;
+        --dark3: #0a1628;
+        --glass: rgba(255,255,255,0.03);
+        --glass-border: rgba(0,245,255,0.12);
+        --text: #e2e8f0;
+        --text-dim: #64748b;
     }
-    .main-header h1 { color: white; margin: 0; font-size: 2.2rem; letter-spacing: 2px; }
-    .main-header p { color: rgba(255,255,255,0.85); margin: 0.5rem 0 0; font-size: 1.05rem; }
+
+    /* ── 全局 ── */
+    html, body, .stApp {
+        background-color: var(--dark) !important;
+        background-image:
+            linear-gradient(rgba(0,245,255,0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(0,245,255,0.03) 1px, transparent 1px) !important;
+        background-size: 60px 60px !important;
+        color: var(--text) !important;
+        font-family: 'Inter', sans-serif !important;
+    }
+    .stApp { background-attachment: fixed !important; }
+
+    /* selection */
+    ::selection { background: var(--cyan); color: var(--dark); }
+
+    /* scrollbar */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: var(--dark2); }
+    ::-webkit-scrollbar-thumb { background: var(--cyan); border-radius: 4px; }
+
+    /* ── 顶部进度条（Streamlit loading bar）── */
+    div[data-testid="stStatusWidget"] { display: none; }
+
+    /* ── 侧边栏 ── */
+    div[data-testid="stSidebar"] {
+        background: var(--dark2) !important;
+        border-right: 1px solid var(--glass-border) !important;
+    }
+    div[data-testid="stSidebar"] * { color: var(--text) !important; }
+    div[data-testid="stSidebar"] h2,
+    div[data-testid="stSidebar"] h3 {
+        font-family: 'JetBrains Mono', monospace !important;
+        color: var(--cyan) !important;
+        letter-spacing: 0.05em;
+        font-size: 0.95rem !important;
+    }
+    /* 侧边栏 radio */
+    div[data-testid="stSidebar"] label {
+        color: var(--text-dim) !important;
+        font-size: 0.85rem !important;
+        padding: 4px 0 !important;
+        transition: color 0.2s !important;
+    }
+    div[data-testid="stSidebar"] label:hover { color: var(--cyan) !important; }
+    div[data-testid="stSidebar"] [data-baseweb="radio"] [aria-checked="true"] ~ div {
+        color: var(--cyan) !important;
+    }
+    /* 侧边栏分隔线 */
+    div[data-testid="stSidebar"] hr {
+        border-color: rgba(0,245,255,0.1) !important;
+        margin: 12px 0 !important;
+    }
+    /* 侧边栏 caption */
+    div[data-testid="stSidebar"] small,
+    div[data-testid="stSidebar"] .stCaption p {
+        color: var(--text-dim) !important;
+        font-family: 'JetBrains Mono', monospace !important;
+        font-size: 0.72rem !important;
+    }
+
+    /* ── 主内容区 ── */
+    section[data-testid="stMain"] > div {
+        padding-top: 1.5rem !important;
+    }
+
+    /* ── 标题 h1-h3 ── */
+    h1, h2, h3 { color: var(--text) !important; }
+    h1 { font-size: 1.8rem !important; font-weight: 800 !important; letter-spacing: -0.01em !important; }
+    h3 { font-size: 1.05rem !important; font-weight: 600 !important; }
+
+    /* ── 按钮 ── */
+    .stButton > button {
+        background: transparent !important;
+        border: 1.5px solid var(--cyan) !important;
+        color: var(--cyan) !important;
+        font-family: 'Inter', sans-serif !important;
+        font-weight: 600 !important;
+        font-size: 0.82rem !important;
+        letter-spacing: 0.06em !important;
+        border-radius: 2px !important;
+        padding: 0.5rem 1.2rem !important;
+        transition: all 0.25s !important;
+        box-shadow: 0 0 10px rgba(0,245,255,0.1) !important;
+    }
+    .stButton > button:hover {
+        background: var(--cyan) !important;
+        color: var(--dark) !important;
+        box-shadow: 0 0 24px rgba(0,245,255,0.4) !important;
+        transform: translateY(-1px) !important;
+    }
+    /* primary button variant */
+    .stButton > button[kind="primary"] {
+        background: var(--cyan) !important;
+        color: var(--dark) !important;
+        font-weight: 700 !important;
+        box-shadow: 0 0 20px rgba(0,245,255,0.3) !important;
+    }
+    .stButton > button[kind="primary"]:hover {
+        box-shadow: 0 0 40px rgba(0,245,255,0.6) !important;
+    }
+
+    /* ── 输入框 ── */
+    .stTextInput > div > div > input,
+    .stTextArea > div > div > textarea,
+    .stNumberInput > div > div > input {
+        background: var(--dark3) !important;
+        border: 1px solid rgba(255,255,255,0.08) !important;
+        border-radius: 2px !important;
+        color: var(--text) !important;
+        font-family: 'Inter', sans-serif !important;
+        font-size: 0.88rem !important;
+        transition: border-color 0.3s, box-shadow 0.3s !important;
+    }
+    .stTextInput > div > div > input:focus,
+    .stTextArea > div > div > textarea:focus,
+    .stNumberInput > div > div > input:focus {
+        border-color: var(--cyan) !important;
+        box-shadow: 0 0 16px rgba(0,245,255,0.1) !important;
+    }
+    .stTextInput label, .stTextArea label, .stNumberInput label,
+    .stSelectbox label, .stMultiSelect label, .stSlider label,
+    .stDateInput label, .stTimeInput label {
+        color: var(--text-dim) !important;
+        font-size: 0.8rem !important;
+        font-weight: 500 !important;
+        letter-spacing: 0.04em !important;
+        text-transform: uppercase !important;
+    }
+
+    /* ── Selectbox ── */
+    .stSelectbox > div > div,
+    .stMultiSelect > div > div {
+        background: var(--dark3) !important;
+        border: 1px solid rgba(255,255,255,0.08) !important;
+        border-radius: 2px !important;
+        color: var(--text) !important;
+    }
+    .stSelectbox > div > div:focus-within,
+    .stMultiSelect > div > div:focus-within {
+        border-color: var(--cyan) !important;
+        box-shadow: 0 0 12px rgba(0,245,255,0.1) !important;
+    }
+
+    /* ── Code blocks ── */
+    code, .stCodeBlock {
+        background: var(--dark3) !important;
+        border: 1px solid rgba(0,245,255,0.1) !important;
+        border-radius: 2px !important;
+        color: var(--cyan) !important;
+        font-family: 'JetBrains Mono', monospace !important;
+        font-size: 0.82rem !important;
+    }
+    .stCodeBlock { padding: 1rem !important; }
+
+    /* ── Expander ── */
+    .streamlit-expanderHeader {
+        background: var(--dark3) !important;
+        border: 1px solid rgba(255,255,255,0.06) !important;
+        border-radius: 2px !important;
+        color: var(--text) !important;
+        font-weight: 600 !important;
+        font-size: 0.88rem !important;
+        transition: border-color 0.3s !important;
+    }
+    .streamlit-expanderHeader:hover {
+        border-color: var(--cyan) !important;
+        color: var(--cyan) !important;
+    }
+    .streamlit-expanderContent {
+        background: rgba(6,13,20,0.6) !important;
+        border: 1px solid rgba(255,255,255,0.05) !important;
+        border-top: none !important;
+        border-radius: 0 0 2px 2px !important;
+    }
+
+    /* ── Tabs ── */
+    .stTabs [data-baseweb="tab-list"] {
+        background: transparent !important;
+        border-bottom: 1px solid rgba(0,245,255,0.1) !important;
+        gap: 0 !important;
+    }
+    .stTabs [data-baseweb="tab"] {
+        background: transparent !important;
+        color: var(--text-dim) !important;
+        font-size: 0.82rem !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.06em !important;
+        text-transform: uppercase !important;
+        border-radius: 0 !important;
+        border-bottom: 2px solid transparent !important;
+        padding: 0.6rem 1.2rem !important;
+        transition: all 0.2s !important;
+    }
+    .stTabs [aria-selected="true"] {
+        color: var(--cyan) !important;
+        border-bottom-color: var(--cyan) !important;
+        background: transparent !important;
+        text-shadow: 0 0 12px rgba(0,245,255,0.4) !important;
+    }
+
+    /* ── Metric ── */
+    div[data-testid="stMetric"] {
+        background: var(--glass) !important;
+        border: 1px solid rgba(255,255,255,0.06) !important;
+        border-radius: 2px !important;
+        padding: 1rem 1.2rem !important;
+        position: relative !important;
+    }
+    div[data-testid="stMetric"]::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+    }
+    div[data-testid="stMetricLabel"] p {
+        color: var(--text-dim) !important;
+        font-size: 0.72rem !important;
+        font-family: 'JetBrains Mono', monospace !important;
+        letter-spacing: 0.12em !important;
+        text-transform: uppercase !important;
+    }
+    div[data-testid="stMetricValue"] {
+        color: var(--cyan) !important;
+        font-size: 2rem !important;
+        font-weight: 900 !important;
+        font-family: 'JetBrains Mono', monospace !important;
+        text-shadow: 0 0 20px rgba(0,245,255,0.3) !important;
+    }
+    div[data-testid="stMetricDelta"] {
+        color: var(--green) !important;
+        font-size: 0.8rem !important;
+    }
+
+    /* ── Info / Success / Warning / Error ── */
+    div[data-testid="stInfo"] {
+        background: rgba(0,245,255,0.04) !important;
+        border: 1px solid rgba(0,245,255,0.2) !important;
+        border-radius: 2px !important;
+        color: var(--text) !important;
+    }
+    div[data-testid="stSuccess"] {
+        background: rgba(0,255,135,0.04) !important;
+        border: 1px solid rgba(0,255,135,0.2) !important;
+        border-radius: 2px !important;
+        color: var(--text) !important;
+    }
+    div[data-testid="stWarning"] {
+        background: rgba(255,200,0,0.04) !important;
+        border: 1px solid rgba(255,200,0,0.2) !important;
+        border-radius: 2px !important;
+        color: var(--text) !important;
+    }
+    div[data-testid="stError"] {
+        background: rgba(255,68,102,0.04) !important;
+        border: 1px solid rgba(255,68,102,0.2) !important;
+        border-radius: 2px !important;
+        color: var(--text) !important;
+    }
+
+    /* ── 分隔线 ── */
+    hr {
+        border-color: rgba(0,245,255,0.08) !important;
+        margin: 1.2rem 0 !important;
+    }
+
+    /* ── Dataframe / Table ── */
+    div[data-testid="stDataFrame"] {
+        border: 1px solid rgba(0,245,255,0.1) !important;
+        border-radius: 2px !important;
+    }
+
+    /* ── Progress bar ── */
+    div[data-testid="stProgressBar"] > div > div {
+        background: linear-gradient(90deg, var(--cyan), var(--purple)) !important;
+        box-shadow: 0 0 8px rgba(0,245,255,0.4) !important;
+    }
+
+    /* ─────────────────────────────────────────
+       自定义组件样式
+    ───────────────────────────────────────── */
+
+    /* 页面主标题横幅 */
+    .main-header {
+        background: var(--dark3);
+        padding: 1.6rem 2rem;
+        border-radius: 2px;
+        margin-bottom: 1.5rem;
+        text-align: center;
+        border: 1px solid var(--glass-border);
+        position: relative;
+        overflow: hidden;
+    }
+    .main-header::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, var(--cyan), var(--purple), transparent);
+    }
+    .main-header::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(135deg, rgba(0,245,255,0.04) 0%, transparent 60%);
+        pointer-events: none;
+    }
+    .main-header h1 {
+        color: var(--text) !important;
+        margin: 0;
+        font-size: 1.8rem !important;
+        font-weight: 900 !important;
+        letter-spacing: -0.01em;
+    }
+    .main-header h1 span { color: var(--cyan); text-shadow: 0 0 20px rgba(0,245,255,0.4); }
+    .main-header p {
+        color: var(--text-dim);
+        margin: 0.5rem 0 0;
+        font-size: 0.9rem;
+        font-family: 'JetBrains Mono', monospace;
+        letter-spacing: 0.04em;
+    }
+
+    /* 数据卡片 */
     .metric-card {
-        background: white;
-        border: 1px solid #e8e8e8;
-        border-radius: 12px;
+        background: var(--glass);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 2px;
         padding: 1.2rem;
         text-align: center;
-        box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+        position: relative;
+        overflow: hidden;
+        transition: border-color 0.3s, box-shadow 0.3s;
     }
-    .metric-card h3 { color: #533483; font-size: 1.8rem; margin: 0; }
-    .metric-card p { color: #666; margin: 0.3rem 0 0; font-size: 0.9rem; }
+    .metric-card::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 0; right: 0; height: 1px;
+        background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+    }
+    .metric-card:hover {
+        border-color: rgba(0,245,255,0.25);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.3), 0 0 20px rgba(0,245,255,0.04);
+    }
+    .metric-card h3 {
+        color: var(--cyan) !important;
+        font-size: 2rem !important;
+        font-family: 'JetBrains Mono', monospace !important;
+        font-weight: 900 !important;
+        margin: 0;
+        text-shadow: 0 0 16px rgba(0,245,255,0.3);
+    }
+    .metric-card p { color: var(--text-dim); margin: 0.3rem 0 0; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; font-family: 'JetBrains Mono', monospace; }
+
+    /* 阶段徽章 */
     .stage-badge {
-        display: inline-block;
-        background: linear-gradient(135deg, #533483, #0f3460);
-        color: white;
-        padding: 0.3rem 1rem;
-        border-radius: 20px;
-        font-weight: bold;
-        font-size: 0.95rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: transparent;
+        border: 1.5px solid var(--cyan);
+        color: var(--cyan);
+        padding: 0.25rem 0.9rem;
+        border-radius: 2px;
+        font-weight: 700;
+        font-size: 0.8rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        font-family: 'JetBrains Mono', monospace;
+        box-shadow: 0 0 12px rgba(0,245,255,0.15);
     }
+
+    /* 提示卡片 */
     .tip-card {
-        background: #f8f5ff;
-        border-left: 4px solid #533483;
-        padding: 1rem;
-        border-radius: 0 8px 8px 0;
+        background: rgba(0,245,255,0.03);
+        border-left: 3px solid var(--cyan);
+        border-top: 1px solid rgba(0,245,255,0.1);
+        border-right: 1px solid rgba(0,245,255,0.05);
+        border-bottom: 1px solid rgba(0,245,255,0.05);
+        padding: 0.9rem 1rem;
+        border-radius: 0 2px 2px 0;
         margin: 0.5rem 0;
-        color: #333;
+        color: var(--text);
+        font-size: 0.87rem;
+        line-height: 1.6;
     }
+    .tip-card strong { color: var(--cyan); }
+
+    /* 时间徽章 */
     .time-badge {
-        background: linear-gradient(135deg, #533483, #0f3460);
-        color: white;
-        padding: 0.2rem 0.8rem;
-        border-radius: 12px;
-        font-size: 0.85rem;
-        font-weight: bold;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: rgba(0,245,255,0.08);
+        border: 1px solid rgba(0,245,255,0.25);
+        color: var(--cyan);
+        padding: 0.2rem 0.7rem;
+        border-radius: 2px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        font-family: 'JetBrains Mono', monospace;
+        letter-spacing: 0.08em;
+        box-shadow: 0 0 8px rgba(0,245,255,0.1);
     }
+
+    /* 计划卡片 */
     .plan-card {
-        background: #f8f9fa;
-        border-radius: 12px;
-        padding: 1rem;
+        background: var(--dark3);
+        border-radius: 2px;
+        padding: 0.9rem 1rem;
         margin: 0.5rem 0;
-        border: 1px solid #e9ecef;
+        border: 1px solid rgba(255,255,255,0.06);
+        color: var(--text);
+        font-size: 0.87rem;
+        line-height: 1.6;
+        transition: border-color 0.3s;
     }
+    .plan-card:hover { border-color: rgba(0,245,255,0.15); }
+    .plan-card strong { color: var(--text); }
+
+    /* 选题卡片 */
     .topic-card {
-        background: linear-gradient(135deg, #f8f5ff 0%, #fff 100%);
-        border: 1px solid #e0d6f0;
-        border-radius: 12px;
+        background: var(--glass);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 2px;
         padding: 0.8rem 1rem;
         margin: 0.4rem 0;
         cursor: pointer;
-        transition: all 0.2s;
+        transition: all 0.25s;
+        color: var(--text);
+        font-size: 0.87rem;
+        position: relative;
+        overflow: hidden;
+    }
+    .topic-card::before {
+        content: '';
+        position: absolute;
+        left: 0; top: 0; bottom: 0;
+        width: 3px;
+        background: var(--cyan);
+        transform: scaleY(0);
+        transition: transform 0.3s;
     }
     .topic-card:hover {
-        border-color: #533483;
-        box-shadow: 0 2px 8px rgba(83,52,131,0.15);
+        border-color: rgba(0,245,255,0.25);
+        background: rgba(0,245,255,0.03);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        padding-left: 1.3rem;
     }
-    div[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #f8f5ff 0%, #FFFFFF 100%);
-    }
-    .stButton > button {
-        border-radius: 8px;
-    }
+    .topic-card:hover::before { transform: scaleY(1); }
+
+    /* 画家徽章 */
     .artist-badge {
         display: inline-block;
-        background: #0f3460;
-        color: white;
+        background: rgba(0,245,255,0.08);
+        border: 1px solid rgba(0,245,255,0.2);
+        color: var(--cyan);
         padding: 0.15rem 0.6rem;
-        border-radius: 8px;
-        font-size: 0.8rem;
+        border-radius: 2px;
+        font-size: 0.75rem;
+        font-family: 'JetBrains Mono', monospace;
         margin: 0.2rem;
+        letter-spacing: 0.04em;
     }
+
+    /* ── Plotly charts dark mode ── */
+    .js-plotly-plot .plotly .modebar { background: var(--dark3) !important; }
+
+    /* ── 隐藏 Streamlit 底部 footer ── */
+    footer { visibility: hidden; }
+    #MainMenu { visibility: hidden; }
+    header { visibility: hidden; }
 </style>
 """, unsafe_allow_html=True)
+
+
+def ai_enabled() -> bool:
+    """Whether AI-dependent features are currently available."""
+    return cfg.has_ai_config()
+
+
+class _DynamicAIGate:
+    """Allow legacy `if OPENAI_API_KEY` checks to remain dynamic."""
+
+    def __bool__(self):
+        return ai_enabled()
+
+
+OPENAI_API_KEY = _DynamicAIGate()
+AI_SETUP_ERROR = "请先在设置页面配置 Claude API Key（支持 CLAUDE_CODE_API_KEY / ANTHROPIC_API_KEY）"
+
+
+def go_to_page(page_name: str):
+    """Switch sidebar page programmatically."""
+    st.session_state["requested_page"] = page_name
+    st.rerun()
+
+
+def render_ai_mode_notice(current_page: str):
+    """Show a clear onboarding notice when AI is not configured."""
+    if ai_enabled() or current_page == "⚙️ 设置":
+        return
+
+    st.info(
+        "当前处于离线运营模式：你仍可使用今日执行、数据录入、发后追踪、策略和仪表盘。"
+        "到「⚙️ 设置 → 🔑 API配置」填写 Claude API Key 后，可解锁 AI 内容生成、合规自查、账号诊断等能力。"
+    )
 
 
 # ==================== 侧边栏 ====================
@@ -176,7 +619,7 @@ def render_sidebar():
             "💬 互动任务站",
         ]
 
-        if OPENAI_API_KEY:
+        if ai_enabled():
             menu_options.extend([
                 "🏥 账号体检",
                 "📈 后链路分析",
@@ -187,7 +630,7 @@ def render_sidebar():
             "📚 经验宝库",
         ])
 
-        if OPENAI_API_KEY:
+        if ai_enabled():
             menu_options.extend([
                 "⚡ 热点快反",
             ])
@@ -199,7 +642,7 @@ def render_sidebar():
             "💡 选题灵感库",
         ])
 
-        if OPENAI_API_KEY:
+        if ai_enabled():
             menu_options.extend([
                 "✍️ AI内容生成",
             ])
@@ -209,7 +652,7 @@ def render_sidebar():
             "🎯 涨粉策略",
         ])
 
-        if OPENAI_API_KEY:
+        if ai_enabled():
             menu_options.extend([
                 "🔥 爆款实验室",
                 "💬 评论引流",
@@ -221,10 +664,18 @@ def render_sidebar():
             "⚙️ 设置",
         ])
 
+        default_page = "🌅 晨间工作台"
+        pending_page = st.session_state.pop("requested_page", None)
+        if pending_page in menu_options:
+            st.session_state["sidebar_page"] = pending_page
+        elif st.session_state.get("sidebar_page") not in menu_options:
+            st.session_state["sidebar_page"] = default_page
+
         page = st.radio(
             "📋 功能菜单",
             menu_options,
-            label_visibility="collapsed"
+            label_visibility="collapsed",
+            key="sidebar_page",
         )
 
         st.markdown("---")
@@ -237,6 +688,13 @@ def render_sidebar():
             st.markdown(f"**👥 粉丝：** {account.get('followers', 0):,}")
         else:
             st.info("请先在设置中配置账号信息")
+
+        ai_status = "🟢 AI 已启用" if ai_enabled() else "🟠 AI 未启用"
+        st.markdown(f"**🤖 状态：** {ai_status}")
+        if not ai_enabled():
+            st.caption("先用排期/追踪/策略功能也可以，完整 AI 能力请在设置页启用。")
+            if st.button("⚙️ 去配置 API", use_container_width=True, key="goto_settings_sidebar"):
+                go_to_page("⚙️ 设置")
 
         st.markdown("---")
         st.caption("🎨 AI油画 × 当代艺术 运营助手")
@@ -323,7 +781,7 @@ def render_daily():
 
     if pkg.get("body"):
         st.markdown("**正文（直接复制）：**")
-        st.text_area("", pkg["body"], height=400, key="daily_body", label_visibility="collapsed")
+        st.text_area("正文内容", pkg["body"], height=400, key="daily_body", label_visibility="collapsed")
 
     if pkg.get("hashtags"):
         st.markdown("**标签（直接复制）：**")
@@ -333,7 +791,7 @@ def render_daily():
     if pkg.get("title") and pkg.get("body"):
         full = f"{pkg['title']}\n\n{pkg['body']}\n\n{pkg.get('hashtags', '')}"
         with st.expander("📋 一键复制完整文案"):
-            st.text_area("", full, height=500, key="daily_full", label_visibility="collapsed")
+            st.text_area("完整文案", full, height=500, key="daily_full", label_visibility="collapsed")
 
     st.markdown("---")
 
@@ -550,6 +1008,30 @@ def render_dashboard():
 
     st.markdown("---")
 
+    # 核心受众画像 (基于 3/10 爆款数据)
+    st.markdown("### 🎯 核心受众画像")
+    st.markdown("""
+    <div class="tip-card" style="border-left-color:#e94560;">
+        <strong>⚠️ 爆款数据揭秘：</strong> 你的受众不是年轻女生，而是<strong>高净值熟龄男性</strong>！
+        内容必须抛弃低幼化表达，转向<strong>「艺术投资」「财富密码」「技术前沿」</strong>等有深度的讨论。
+    </div>
+    """, unsafe_allow_html=True)
+
+    aud_cols = st.columns(4)
+    with aud_cols[0]:
+        st.markdown(f"**👦 性别：**<br>{AUDIENCE_PERSONA['gender']}", unsafe_allow_html=True)
+    with aud_cols[1]:
+        st.markdown(f"**💼 年龄：**<br>{AUDIENCE_PERSONA['age']}", unsafe_allow_html=True)
+    with aud_cols[2]:
+        st.markdown(f"**📍 地域：**<br>{AUDIENCE_PERSONA['geography']}", unsafe_allow_html=True)
+    with aud_cols[3]:
+        st.markdown(f"**🎯 兴趣：**<br>{AUDIENCE_PERSONA['interests']}", unsafe_allow_html=True)
+
+    with st.expander("📖 查看详细人群洞察与写作建议", expanded=False):
+        st.markdown(f"**心理特征：** {AUDIENCE_PERSONA['psychographics']}")
+
+    st.markdown("---")
+
     # 今日推荐 + 阶段任务
     col1, col2 = st.columns(2)
 
@@ -703,7 +1185,7 @@ def render_content_generator():
             if not subject:
                 st.warning("请输入画面主题")
             elif not OPENAI_API_KEY:
-                st.error("请先在设置页面配置 OpenAI API Key")
+                st.error(AI_SETUP_ERROR)
             else:
                 with st.spinner("🤖 正在生成专业Prompt..."):
                     result = generate_art_prompt(tool, style_ref, subject, mood, aspect_ratio, extra)
@@ -744,7 +1226,7 @@ def render_content_generator():
             if not result_desc:
                 st.warning("请描述一下你的生成结果")
             elif not OPENAI_API_KEY:
-                st.error("请先在设置页面配置 OpenAI API Key")
+                st.error(AI_SETUP_ERROR)
             else:
                 with st.spinner("🤖 正在为你的作品写配套文案..."):
                     result = generate_post_from_result(result_desc, orig_prompt, post_type, post_style)
@@ -816,7 +1298,7 @@ def render_content_generator():
             if not cv_topic:
                 st.warning("请输入笔记主题")
             elif not OPENAI_API_KEY:
-                st.error("请先在设置页面配置 OpenAI API Key")
+                st.error(AI_SETUP_ERROR)
             else:
                 with st.spinner("🤖 正在生成封面方案（Prompt+标题+排版教程）..."):
                     result = generate_cover_package(cv_type, cv_topic, cv_title, cv_style, cv_tool)
@@ -861,7 +1343,7 @@ def render_content_generator():
             if not bad_prompt or not issue:
                 st.warning("请填写Prompt和问题描述")
             elif not OPENAI_API_KEY:
-                st.error("请先在设置页面配置 OpenAI API Key")
+                st.error(AI_SETUP_ERROR)
             else:
                 with st.spinner("🤖 正在分析问题并优化..."):
                     fixed = optimize_prompt(bad_prompt, issue)
@@ -901,7 +1383,7 @@ def render_content_generator():
             if not painter_val:
                 st.warning("请输入画家名字")
             elif not OPENAI_API_KEY:
-                st.error("请先在设置页面配置 OpenAI API Key")
+                st.error(AI_SETUP_ERROR)
             else:
                 with st.spinner(f"🤖 正在分析{painter_val}的风格并生成Prompt..."):
                     result = generate_style_prompt(painter_val, painter_tool)
@@ -928,7 +1410,7 @@ def render_content_generator():
             if not batch_theme:
                 st.warning("请输入系列主题")
             elif not OPENAI_API_KEY:
-                st.error("请先在设置页面配置 OpenAI API Key")
+                st.error(AI_SETUP_ERROR)
             else:
                 with st.spinner(f"🤖 正在生成{batch_count}个Prompt..."):
                     result = generate_batch_prompts(batch_theme, batch_count, batch_tool)
@@ -963,7 +1445,7 @@ def render_content_generator():
                 if not topic:
                     st.warning("请输入主题")
                 elif not OPENAI_API_KEY:
-                    st.error("请先配置API Key")
+                    st.error(AI_SETUP_ERROR)
                 else:
                     with st.spinner("🤖 AI创作中..."):
                         kw_list = [k.strip() for k in keywords.split(",") if k.strip()] if keywords else None
@@ -1472,7 +1954,7 @@ def render_viral_lab():
             if not v_title and not v_content:
                 st.warning("请至少输入标题或内容")
             elif not OPENAI_API_KEY:
-                st.error("请先在设置页面配置 OpenAI API Key")
+                st.error(AI_SETUP_ERROR)
             else:
                 with st.spinner("🤖 正在深度拆解爆款基因..."):
                     result = analyze_viral_post(v_title, v_content, v_metrics)
@@ -1515,7 +1997,7 @@ def render_viral_lab():
             if not p_title and not p_content:
                 st.warning("请至少输入标题或内容")
             elif not OPENAI_API_KEY:
-                st.error("请先在设置页面配置 OpenAI API Key")
+                st.error(AI_SETUP_ERROR)
             else:
                 with st.spinner("🤖 正在全方位评估你的内容..."):
                     result = pre_publish_check(p_title, p_content, p_cover, p_time)
@@ -1565,7 +2047,7 @@ def render_viral_lab():
             elif not fmt:
                 st.warning("请选择一个二创方向")
             elif not OPENAI_API_KEY:
-                st.error("请先在设置页面配置 OpenAI API Key")
+                st.error(AI_SETUP_ERROR)
             else:
                 with st.spinner(f"🤖 正在将内容改编为「{fmt}」..."):
                     result = repurpose_content(r_title, r_content, fmt)
@@ -1594,7 +2076,7 @@ def render_viral_lab():
 
         if st.button("📋 生成本周AI周报", type="primary", use_container_width=True, key="gen_report_btn"):
             if not OPENAI_API_KEY:
-                st.error("请先在设置页面配置 OpenAI API Key")
+                st.error(AI_SETUP_ERROR)
             elif not posts:
                 st.warning("暂无笔记数据。请先在「笔记管理」中记录笔记后再生成周报。")
             else:
@@ -1664,7 +2146,7 @@ def render_engagement():
             if not c_topic:
                 st.warning("请输入笔记主题")
             elif not OPENAI_API_KEY:
-                st.error("请先在设置页面配置 OpenAI API Key")
+                st.error(AI_SETUP_ERROR)
             else:
                 with st.spinner("🤖 正在生成高质量评论..."):
                     result = generate_engagement_comments(c_type, c_topic, c_count)
@@ -1920,7 +2402,7 @@ def render_competitor():
             if not comp_input:
                 st.warning("请输入竞品信息")
             elif not OPENAI_API_KEY:
-                st.error("请先在设置页面配置 OpenAI API Key")
+                st.error(AI_SETUP_ERROR)
             else:
                 with st.spinner("🤖 正在分析竞品并制定差异化策略..."):
                     result = analyze_competitor(comp_input)
@@ -1986,10 +2468,13 @@ def render_morning_patrol():
     col_a, col_b = st.columns(2)
     with col_a:
         if st.button("📌 去今日执行页面", use_container_width=True):
-            st.info("请在左侧菜单点击「📌 今日执行」查看完整内容包")
+            go_to_page("📌 今日执行")
     with col_b:
         if st.button("✍️ 去生成内容", use_container_width=True):
-            st.info("请在左侧菜单点击「✍️ AI内容生成」开始创作")
+            if ai_enabled():
+                go_to_page("✍️ AI内容生成")
+            else:
+                go_to_page("⚙️ 设置")
 
     st.markdown("---")
 
@@ -2311,7 +2796,7 @@ def render_engagement_patrol():
                 st.success("✅ 评论生成完成！稍作修改后使用")
                 st.markdown(result)
         else:
-            st.info("💡 在本地配置 OpenAI API Key 后即可一键生成巡逻评论。")
+            st.info("💡 配置 Claude API Key 后即可一键生成巡逻评论。")
 
     # ===== Tab 3: 回复助手 =====
     with tab_replies:
@@ -2338,7 +2823,7 @@ def render_engagement_patrol():
                     st.success("✅ 回复建议生成完成！")
                     st.markdown(result)
         else:
-            st.info("💡 在本地配置 OpenAI API Key 后即可自动生成高质量回复建议。")
+            st.info("💡 配置 Claude API Key 后即可自动生成高质量回复建议。")
 
     # ===== Tab 4: 记录互动 =====
     with tab_log:
@@ -2524,7 +3009,7 @@ def render_account_health():
     st.markdown("### 🤖 AI深度诊断")
     if st.button("🏥 生成AI诊断报告", type="primary", use_container_width=True, key="gen_diagnosis"):
         if not OPENAI_API_KEY:
-            st.error("请先在设置页面配置 OpenAI API Key")
+            st.error(AI_SETUP_ERROR)
         else:
             with st.spinner("🤖 正在全面诊断..."):
                 report = generate_account_diagnosis(
@@ -2723,7 +3208,7 @@ def render_funnel_analysis():
                 st.markdown("---")
                 if st.button("🤖 AI深度诊断后链路", type="primary", use_container_width=True, key="ai_funnel"):
                     if not OPENAI_API_KEY:
-                        st.error("请先在设置页面配置 OpenAI API Key")
+                        st.error(AI_SETUP_ERROR)
                     else:
                         with st.spinner("🤖 AI正在深度分析后链路漏斗..."):
                             report = generate_funnel_diagnosis(
@@ -2951,7 +3436,7 @@ def render_compliance():
             if not cc_title and not cc_content:
                 st.warning("请至少输入标题或正文")
             elif not OPENAI_API_KEY:
-                st.error("请先在设置页面配置 OpenAI API Key")
+                st.error(AI_SETUP_ERROR)
             else:
                 with st.spinner("🤖 正在进行合规检测..."):
                     result = generate_compliance_check(cc_title, cc_content, cc_hashtags, cc_ai)
@@ -3426,7 +3911,7 @@ def render_hot_topic():
             if not hot_desc:
                 st.warning("请描述热点内容")
             elif not OPENAI_API_KEY:
-                st.error("请先在设置页面配置 OpenAI API Key")
+                st.error(AI_SETUP_ERROR)
             else:
                 urgency_text = hot_urgency.split("（")[0].replace("🔴 ", "").replace("🟡 ", "").replace("🟢 ", "")
                 with st.spinner("🤖 AI正在生成完整内容包..."):
@@ -3531,29 +4016,35 @@ def render_settings():
 
     with tab2:
         st.markdown("### API 配置")
+        status_label = "🟢 已启用" if ai_enabled() else "🟠 未启用"
+        st.markdown(f"**当前状态：** {status_label}")
         st.info("""
-        本工具需要 OpenAI API（或兼容API）来驱动AI内容生成功能。
+        本工具使用 Claude / Anthropic API 来驱动 AI 内容生成功能。
 
         **配置方式（任选其一）：**
-        1. 在下方输入（仅本次会话有效）
-        2. 设置环境变量：`OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`
+        1. 在下方填写 Claude API Key（仅本次会话有效）
+        2. 设置环境变量：`CLAUDE_CODE_API_KEY` 或 `ANTHROPIC_API_KEY`
+        3. 如需代理/中转，可额外设置：`CLAUDE_BASE_URL` / `ANTHROPIC_BASE_URL` / `CLAUDE_MODEL`
         """)
+        st.caption("默认模型已设为 `claude-sonnet-4-6`，更适合这类日常运营生成场景。")
 
-        new_key = st.text_input("API Key", value=OPENAI_API_KEY, type="password", key="s_api_key")
-        new_url = st.text_input("API Base URL", value=OPENAI_BASE_URL, key="s_api_url")
-        new_model = st.text_input("模型名称", value=OPENAI_MODEL, key="s_model")
+        new_key = st.text_input("Claude API Key", value=cfg.CLAUDE_API_KEY, type="password", key="s_api_key")
+        new_url = st.text_input("Claude Base URL", value=cfg.CLAUDE_BASE_URL, key="s_api_url")
+        new_model = st.text_input("模型名称", value=cfg.CLAUDE_MODEL, key="s_model")
 
         if st.button("💾 保存API配置", type="primary", key="s_api_save"):
-            import xhs_agent.config as cfg
-            cfg.OPENAI_API_KEY = new_key
-            cfg.OPENAI_BASE_URL = new_url
-            cfg.OPENAI_MODEL = new_model
-            st.success("✅ API配置已保存（本次会话有效）！")
+            import xhs_agent.content as content_mod
+
+            cfg.set_ai_runtime_config(new_key, new_url, new_model)
+            content_mod.OPENAI_MODEL = cfg.CLAUDE_MODEL
+            st.success("✅ Claude API 配置已保存（本次会话有效）！")
+            st.rerun()
 
 
 # ==================== 主程序 ====================
 def main():
     page = render_sidebar()
+    render_ai_mode_notice(page)
 
     # 运营工作流
     if page == "🌅 晨间工作台":

@@ -1,0 +1,26 @@
+[
+  {
+    "period_label": "03-10 to 03-16",
+    "synced_at": "2026-03-17T00:00:00",
+    "source": "creator_center_viewing_dashboard_screenshot",
+    "is_approximate": true,
+    "notes": [
+      "impressions are rounded from the dashboard display of 1.7万",
+      "this snapshot only contains viewing-page metrics, not interaction or follower-conversion metrics"
+    ],
+    "metrics": {
+      "impressions": 17000,
+      "views": 2148,
+      "cover_ctr": 13.0,
+      "avg_view_duration_sec": 24,
+      "total_watch_hours": 15.3,
+      "video_completion_rate": 0.0
+    },
+    "traffic_sources_pct": {
+      "home_recommendation": 89,
+      "search": 4,
+      "profile": 2,
+      "other": 5
+    }
+  }
+]

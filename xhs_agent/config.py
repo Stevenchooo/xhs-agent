@@ -2,10 +2,56 @@
 
 import os
 
-# OpenAI API 配置
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
-OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o")
+# Claude / Anthropic API 配置
+# 优先兼容用户更容易理解的 Claude Code 命名，其次兼容 Anthropic 官方环境变量。
+CLAUDE_API_KEY = (
+    os.environ.get("CLAUDE_CODE_API_KEY", "")
+    or os.environ.get("ANTHROPIC_API_KEY", "")
+)
+CLAUDE_BASE_URL = (
+    os.environ.get("CLAUDE_BASE_URL", "")
+    or os.environ.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
+)
+CLAUDE_MODEL = (
+    os.environ.get("CLAUDE_MODEL", "")
+    or os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+)
+
+
+def has_ai_config() -> bool:
+    """Return whether Claude-powered features are currently available."""
+    return bool((CLAUDE_API_KEY or "").strip())
+
+
+def get_ai_runtime_config() -> dict:
+    """Read the latest in-memory Claude runtime config."""
+    return {
+        "api_key": CLAUDE_API_KEY,
+        "base_url": CLAUDE_BASE_URL,
+        "model": CLAUDE_MODEL,
+    }
+
+
+def set_ai_runtime_config(api_key: str, base_url: str, model: str):
+    """Update Claude runtime config for the current Streamlit session."""
+    global CLAUDE_API_KEY, CLAUDE_BASE_URL, CLAUDE_MODEL
+
+    CLAUDE_API_KEY = (api_key or "").strip()
+    CLAUDE_BASE_URL = (base_url or "https://api.anthropic.com").strip() or "https://api.anthropic.com"
+    CLAUDE_MODEL = (model or "claude-sonnet-4-6").strip() or "claude-sonnet-4-6"
+
+
+# 向后兼容旧调用点，避免页面层逐步迁移时断裂。
+def has_openai_config() -> bool:
+    return has_ai_config()
+
+
+def get_openai_runtime_config() -> dict:
+    return get_ai_runtime_config()
+
+
+def set_openai_runtime_config(api_key: str, base_url: str, model: str):
+    set_ai_runtime_config(api_key, base_url, model)
 
 # 数据存储路径
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
@@ -13,10 +59,19 @@ ACCOUNT_DATA_FILE = os.path.join(DATA_DIR, "account_data.json")
 CONTENT_HISTORY_FILE = os.path.join(DATA_DIR, "content_history.json")
 ANALYTICS_FILE = os.path.join(DATA_DIR, "analytics.json")
 
-# ==================== 账号定位 ====================
+# ==================== 账号定位 & 受众画像 ====================
 ACCOUNT_NICHE = "AI油画·当代艺术"
 ACCOUNT_DESC = "用AI探索油画艺术的无限可能，分享海外当代画家的精彩作品"
 XHS_USER_ID = "1184199598"
+
+# 最新跑通的受众画像（基于3/10爆款数据验证）
+AUDIENCE_PERSONA = {
+    "gender": "男性为主（80%）",
+    "age": "35岁以上熟龄人群（35-44岁占32%，>44岁占33%）",
+    "geography": "高线城市与海外（海外12%、北京10%、上海8%）",
+    "interests": "艺术、社科、财经投资、科技(AI)",
+    "psychographics": "高净值、有独立思考能力、对「为什么贵」「艺术背后的商业/哲学逻辑」极度感兴趣。反感低幼化表达（如'绝绝子'、'姐妹们'）。",
+}
 
 # 小红书内容分类（艺术领域细分）
 CONTENT_CATEGORIES = [
@@ -46,6 +101,11 @@ CONTENT_TYPES = {
         "desc": "展示AI生成油画的过程和成品，技术感+艺术感",
         "structure": "灵感来源 → 提示词/参数分享 → 生成过程 → 成品展示 → 调整心得",
         "avg_save_rate": "10-18%"
+    },
+    "艺术故事/冷知识解密": {
+        "desc": "以画作为引子，挖掘背后的反常理故事或隐藏秘密",
+        "structure": "悬念开头(如:放大10倍发现了什么) → 故事展开(反转/猎奇) → 艺术科普 → 评论互动",
+        "avg_save_rate": "15-25%"
     },
     "画家作品赏析": {
         "desc": "介绍海外当代画家及其代表作，知识性强",
@@ -523,38 +583,21 @@ MONETIZATION_ROADMAP = [
 # CTR≥8%的封面黄金公式：画作占80% + 3:4竖版 + 大号粗体标题 + 高饱和度
 
 COVER_TEMPLATES = {
-    "AI油画合集": {
-        "layout": "画作占80% + 底部半透明黑条 + 白色粗体标题",
-        "title_formula": "用AI画了一组{主题}油画🎨｜{钩子}",
-        "title_examples": [
-            "用AI画了一组莫兰迪色油画🎨｜每张都想当壁纸",
-            "用AI画了一组雨天城市油画🎨｜第3张我自己都惊了",
-            "用AI画了一组日落海面油画🎨｜治愈了我一整天",
-        ],
-        "design_rules": [
-            "选9张图中色彩最鲜艳、构图最饱满的那张做封面",
-            "底部加半透明黑条（透明度60%），上面放白色粗体标题",
-            "标题字号≥40pt，手机缩略图也能看清",
-            "不加其他装饰元素，画作本身就是最好的封面",
-        ],
-        "canva_steps": "打开Canva → 自定义尺寸1080×1440(3:4) → 上传画作铺满 → 底部加矩形(黑色60%透明) → 加文字(白色/思源黑体/粗体/40pt+)",
-        "prompt": "A stunning collection preview of {count} oil paintings in {style} style, arranged in an elegant grid layout on dark background, the largest painting prominently displayed, rich colors, museum gallery quality, 3:4 vertical composition, fine art presentation --ar 3:4 --s 800 --v 6.1",
-    },
     "画家介绍": {
-        "layout": "画家代表作占80% + 左上角或底部大号标题 + 画家名字英文小字",
-        "title_formula": "{画家名}｜{一句话钩子}",
+        "layout": "画家代表作占80% + 左上角或底部大号悬念标题",
+        "title_formula": "{震撼数字/反差悬念}｜{画家名}",
         "title_examples": [
-            "Gerhard Richter｜把照片画模糊→卖了3个亿",
-            "David Hockney｜82岁还在用iPad画画的英国国宝",
-            "这位90后画家一幅画卖了2000万💎",
+            "把照片画模糊→卖了3个亿💰｜Gerhard Richter",
+            "这幅画被博物馆拉黑了三次🤯｜为什么这么贵？",
+            "放大10倍后细思极恐🤫｜这根本不是普通的风景画",
         ],
         "design_rules": [
-            "选画家最有视觉冲击力的代表作做背景",
-            "标题要有反差/悬念（「卖3亿」「90后」「iPad画画」）",
-            "画家英文名放小字，增加专业感",
-            "可以在画作上加轻微暗角（Canva滤镜），让文字更清晰",
+            "封面必须放吸引眼球的大字标题，绝不能只放纯图",
+            "标题字体要大！颜色要有对比！",
+            "文案突出反差感、金钱冲突、隐藏的秘密",
+            "选图挑最怪诞、最有视觉冲击力的",
         ],
-        "canva_steps": "打开Canva → 1080×1440 → 上传代表作铺满 → 加暗角滤镜 → 底部加标题(白色粗体) → 小字加画家英文名",
+        "canva_steps": "打开Canva → 1080×1440 → 上传代表作铺满 → 加暗角滤镜 → 底部加巨大号标题(必须含金钱/惊讶/悬疑元素) → 加emoji",
         "prompt": "A dramatic portrait-style presentation of a famous painting by {painter}, the artwork filling most of the frame with dramatic lighting, museum spotlight effect, dark vignette edges, space at bottom for text overlay, 3:4 vertical, gallery quality --ar 3:4 --s 750 --v 6.1",
     },
     "AI绘画教程": {

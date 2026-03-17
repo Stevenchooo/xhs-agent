@@ -151,6 +151,33 @@
       "date": "2026-03-16",
       "profile_visits": 53,
       "new_followers": 16
+    },
+    {
+      "scope": "weekly",
+      "title": "整体数据 03月10日-03月16日",
+      "content_type": "整体",
+      "source": "creator_center_note_overview_screenshot",
+      "is_approximate": true,
+      "impressions": 17000,
+      "views": 2148,
+      "likes": 79,
+      "comments": 13,
+      "saves": 59,
+      "shares": 24,
+      "profile_visits": 102,
+      "new_followers": 22,
+      "net_followers": 21,
+      "unfollows": 1,
+      "dms": 0,
+      "private_domain_adds": 0,
+      "paying_customers": 0,
+      "revenue": 0,
+      "cover_ctr": 13.0,
+      "completion_rate": 0,
+      "id": 8,
+      "recorded_at": "2026-03-17T10:52:22",
+      "date": "2026-03-17",
+      "total_engagement": 175
     }
   ]
 }

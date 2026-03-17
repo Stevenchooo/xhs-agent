@@ -158,5 +158,48 @@
     "unfollows": 0,
     "review_date": "2026-03-16T11:07:36.202299",
     "review_id": 8
+  },
+  {
+    "date": "2026-03-17",
+    "total_posts": 0,
+    "followers": 9,
+    "followers_gain": 0,
+    "avg_views": 0,
+    "avg_likes": 0,
+    "avg_saves": 0,
+    "avg_comments": 0,
+    "best_post": "",
+    "best_type": "AI油画创作过程",
+    "best_post_views": 0,
+    "review_date": "2026-03-17T10:29:51.736054",
+    "review_id": 9
+  },
+  {
+    "date": "2026-03-16",
+    "period": "03-10 to 03-16",
+    "total_posts": 8,
+    "followers": 31,
+    "followers_gain": 21,
+    "avg_views": 269,
+    "avg_likes": 10,
+    "avg_saves": 7,
+    "avg_comments": 2,
+    "best_post": "他把照片画模糊居然卖了3亿",
+    "best_type": "画家介绍",
+    "best_post_views": 1932,
+    "impressions": 17000,
+    "cover_ctr": 13.0,
+    "shares": 24,
+    "profile_visitors": 102,
+    "new_follows": 22,
+    "unfollows": 1,
+    "is_assumed_partial_sync": true,
+    "assumption_notes": [
+      "total_posts carried over from latest saved review because the screenshot does not include cumulative note count",
+      "followers carried over from latest saved account snapshot because the screenshot does not include current total followers",
+      "best_post reused from the latest saved best-performing post because this screenshot does not include per-post ranking"
+    ],
+    "review_date": "2026-03-17T10:52:22",
+    "review_id": 10
   }
 ]
