@@ -8,6 +8,10 @@ import datetime
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import re
+import subprocess
+import sys
+from pathlib import Path
 
 import xhs_agent.config as cfg
 from xhs_agent.config import (
@@ -92,7 +96,7 @@ st.markdown("""
         --glass: rgba(255,255,255,0.03);
         --glass-border: rgba(0,245,255,0.12);
         --text: #e2e8f0;
-        --text-dim: #64748b;
+        --text-dim: #8fa3bb;
     }
 
     /* ── 全局 ── */
@@ -133,7 +137,7 @@ st.markdown("""
     }
     /* 侧边栏 radio */
     div[data-testid="stSidebar"] label {
-        color: var(--text-dim) !important;
+        color: #b8c7d9 !important;
         font-size: 0.85rem !important;
         padding: 4px 0 !important;
         transition: color 0.2s !important;
@@ -250,7 +254,9 @@ st.markdown("""
     .stCodeBlock { padding: 1rem !important; }
 
     /* ── Expander ── */
-    .streamlit-expanderHeader {
+    .streamlit-expanderHeader,
+    [data-testid="stExpander"] details summary,
+    [data-testid="stExpander"] details > summary {
         background: var(--dark3) !important;
         border: 1px solid rgba(255,255,255,0.06) !important;
         border-radius: 2px !important;
@@ -259,11 +265,19 @@ st.markdown("""
         font-size: 0.88rem !important;
         transition: border-color 0.3s !important;
     }
-    .streamlit-expanderHeader:hover {
+    .streamlit-expanderHeader:hover,
+    [data-testid="stExpander"] details summary:hover {
         border-color: var(--cyan) !important;
         color: var(--cyan) !important;
     }
-    .streamlit-expanderContent {
+    /* expander header text in newer Streamlit */
+    [data-testid="stExpander"] details summary p,
+    [data-testid="stExpander"] summary span {
+        color: var(--text) !important;
+        font-weight: 600 !important;
+    }
+    .streamlit-expanderContent,
+    [data-testid="stExpander"] details > div {
         background: rgba(6,13,20,0.6) !important;
         border: 1px solid rgba(255,255,255,0.05) !important;
         border-top: none !important;
@@ -585,6 +599,94 @@ class _DynamicAIGate:
 
 OPENAI_API_KEY = _DynamicAIGate()
 AI_SETUP_ERROR = "请先在设置页面配置 Claude API Key（支持 CLAUDE_CODE_API_KEY / ANTHROPIC_API_KEY）"
+PROJECT_ROOT = Path(__file__).resolve().parent
+EXIF_SCRIPT_PATH = PROJECT_ROOT / "scripts" / "add_exif.py"
+SUPPORTED_IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".webp")
+
+
+@st.cache_data(show_spinner=False)
+def load_exif_camera_options():
+    """Load camera options from scripts/add_exif.py."""
+    if not EXIF_SCRIPT_PATH.exists():
+        return [], f"未找到脚本：{EXIF_SCRIPT_PATH}"
+
+    try:
+        result = subprocess.run(
+            [sys.executable, str(EXIF_SCRIPT_PATH), "--list-cameras"],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+        )
+    except Exception as exc:
+        return [], f"读取设备列表失败：{exc}"
+
+    output = "\n".join(
+        part for part in [result.stdout.strip(), result.stderr.strip()] if part
+    ).strip()
+    if result.returncode != 0:
+        return [], output or "读取设备列表失败"
+
+    options = []
+    current = None
+    for raw_line in result.stdout.splitlines():
+        line = raw_line.strip()
+        camera_match = re.match(r"\[(\d+)\]\s+(.+?)\s+\((.+?)\)$", line)
+        if camera_match:
+            if current:
+                options.append(current)
+            idx, model, make = camera_match.groups()
+            current = {
+                "value": idx,
+                "model": model.strip(),
+                "make": make.strip(),
+                "lens": "",
+            }
+            continue
+
+        lens_match = re.match(r"镜头:\s*(.+)$", line)
+        if lens_match and current:
+            current["lens"] = lens_match.group(1).strip()
+
+    if current:
+        options.append(current)
+
+    if not options:
+        return [], "未解析到设备列表，请检查脚本输出"
+    return options, ""
+
+
+def resolve_exif_folder(folder_input: str) -> Path:
+    """Resolve relative folder path against project root."""
+    raw = folder_input.strip()
+    folder_path = Path(raw)
+    if folder_path.is_absolute():
+        return folder_path.resolve()
+    return (PROJECT_ROOT / folder_path).resolve()
+
+
+def count_processable_images(folder_path: Path) -> int:
+    """Count image files supported by add_exif.py."""
+    return sum(
+        1
+        for item in folder_path.iterdir()
+        if item.is_file() and item.suffix.lower() in SUPPORTED_IMAGE_SUFFIXES
+    )
+
+
+def run_exif_script(folder_path: Path, camera_index: str):
+    """Execute add_exif.py and return subprocess result."""
+    return subprocess.run(
+        [
+            sys.executable,
+            str(EXIF_SCRIPT_PATH),
+            str(folder_path),
+            "--camera",
+            str(camera_index),
+        ],
+        cwd=str(PROJECT_ROOT),
+        capture_output=True,
+        text=True,
+    )
 
 
 def go_to_page(page_name: str):
@@ -640,6 +742,7 @@ def render_sidebar():
             "📊 数据复盘",
             "🏠 运营仪表盘",
             "💡 选题灵感库",
+            "🖼️ EXIF处理",
         ])
 
         if ai_enabled():
@@ -1496,6 +1599,98 @@ def render_content_generator():
                     if a_c and OPENAI_API_KEY:
                         with st.spinner("🤖 分析中..."):
                             st.markdown(analyze_and_improve(a_t, a_c))
+
+
+# ==================== 页面：EXIF处理 ====================
+def render_exif_tool():
+    st.markdown("## 🖼️ 图片EXIF处理")
+    st.markdown(
+        "选择设备后点击处理，平台会调用脚本批量写入 EXIF 并清除来源元数据。"
+    )
+    st.info("建议同一批图片统一使用同一个设备。默认预选最新索尼机型 ILCE-9M3。")
+
+    camera_options, camera_error = load_exif_camera_options()
+    if camera_error:
+        st.error(f"设备列表加载失败：{camera_error}")
+        st.caption("请先安装脚本依赖：`pip install Pillow piexif`")
+        return
+
+    existing_dirs = []
+    for rel_path in ("xhs_agent/data", "data"):
+        candidate = PROJECT_ROOT / rel_path
+        if candidate.exists() and candidate.is_dir():
+            existing_dirs.append(rel_path)
+
+    if existing_dirs:
+        st.caption("检测到图片目录：" + " / ".join(f"`{p}`" for p in existing_dirs))
+
+    default_folder = (
+        "xhs_agent/data"
+        if "xhs_agent/data" in existing_dirs
+        else (existing_dirs[0] if existing_dirs else "data")
+    )
+    folder_input = st.text_input(
+        "📁 图片目录（相对项目根目录，或填写绝对路径）",
+        value=default_folder,
+        key="exif_target_folder",
+    )
+
+    default_camera_index = 0
+    for i, option in enumerate(camera_options):
+        if option["make"].upper() == "SONY" and option["model"] == "ILCE-9M3":
+            default_camera_index = i
+            break
+
+    selected_camera = st.selectbox(
+        "📷 设备选择",
+        options=camera_options,
+        index=default_camera_index,
+        format_func=lambda opt: (
+            f"[{opt['value']}] {opt['model']} ({opt['make']})"
+            + (f" · {opt['lens']}" if opt.get("lens") else "")
+        ),
+        key="exif_camera_choice",
+    )
+
+    if st.button("🚀 开始处理", type="primary", use_container_width=True, key="exif_run_btn"):
+        if not folder_input.strip():
+            st.warning("请填写图片目录")
+            return
+
+        folder_path = resolve_exif_folder(folder_input)
+        if not folder_path.exists() or not folder_path.is_dir():
+            st.error(f"目录不存在：{folder_path}")
+            return
+
+        image_count = count_processable_images(folder_path)
+        if image_count == 0:
+            st.warning(f"目录中未找到支持格式图片：{', '.join(SUPPORTED_IMAGE_SUFFIXES)}")
+            return
+
+        with st.spinner(f"正在处理 {image_count} 张图片..."):
+            result = run_exif_script(folder_path, selected_camera["value"])
+
+        logs = "\n\n".join(
+            part for part in [result.stdout.strip(), result.stderr.strip()] if part
+        ).strip() or "（脚本无输出）"
+
+        if result.returncode == 0:
+            match = re.search(r"处理完成:\s*成功\s*(\d+)\s*\|\s*失败\s*(\d+)", logs)
+            if match:
+                success_count, fail_count = match.groups()
+                st.success(f"✅ 处理完成：成功 {success_count}，失败 {fail_count}")
+            else:
+                st.success("✅ 处理完成")
+            st.caption(f"目录：`{folder_path}`")
+            st.caption(
+                f"设备：`{selected_camera['model']} ({selected_camera['make']})` "
+                f"[{selected_camera['value']}]"
+            )
+        else:
+            st.error("❌ 处理失败，请查看下方日志")
+
+        with st.expander("📄 脚本执行日志", expanded=result.returncode != 0):
+            st.code(logs, language="text")
 
 
 # ==================== 页面：发布计划 ====================
@@ -4072,6 +4267,8 @@ def main():
         render_dashboard()
     elif page == "💡 选题灵感库":
         render_topic_ideas()
+    elif page == "🖼️ EXIF处理":
+        render_exif_tool()
     elif page == "✍️ AI内容生成":
         render_content_generator()
     elif page == "📅 发布计划":

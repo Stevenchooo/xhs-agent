@@ -6,7 +6,7 @@
 
 import datetime
 
-# ==================== 10天内容包（基于数据优化后） ====================
+# ==================== 内容包库（基于数据优化后） ====================
 DAILY_PACKAGES = [
 
     # ===== Day 1：视觉反转型（新增·对标#油画Top1） =====
@@ -978,7 +978,174 @@ AI没学到的：
 ⚠️ 本文部分图片由AI辅助生成""",
         "hashtags": "#当代艺术 #CyTwombly #艺术收藏 #AI绘画 #画家推荐 #投资逻辑 #油画 #AI油画 #拍卖 #艺术史",
     },
+    {
+        "day_label": "Day 10",
+        "type": "画家故事 + AI复刻",
+        "theme": "David Hockney：80多岁还在iPad上画画",
+        "why": "年龄反差+科技标签+高价成交，这类题既有搜索流量也有讨论性。相比纯泳池对比，更适合拉新关注和建立账号记忆点。",
+        "time": "21:00",
+        "prompts": [
+            {
+                "desc": "图1·封面：AI模仿Hockney泳池风格",
+                "prompt": "Swimming pool painting in David Hockney style, bright turquoise water with geometric ripple patterns, California sunshine, crisp shadows, flat bold colors, modernist villa in the background, acrylic-to-oil texture, contemporary fine art poster composition, vertical 3:4 with space for headline at bottom --ar 3:4 --s 750 --v 6.1",
+                "note": "封面加大字「80多岁 还在iPad上画画」",
+            },
+            {
+                "desc": "图2：Hockney原作《A Bigger Splash》或泳池系列高清图",
+                "prompt": "（不需要AI生成，去网上下载David Hockney《A Bigger Splash》或泳池系列原作高清图）",
+                "note": "用原作建立辨识度和搜索感",
+            },
+            {
+                "desc": "图3：AI模仿Hockney的iPad风景画",
+                "prompt": "Landscape painting in David Hockney iPad drawing style, rolling Yorkshire hills in spring, bright vivid greens and purples, simplified tree forms, joyful thick digital brush lines translated into painterly texture, contemporary art, vertical 3:4 --ar 3:4 --s 750 --v 6.1",
+                "note": "强调他晚年拥抱新工具这件事",
+            },
+            {
+                "desc": "图4-5：AI模仿其窗景/室内花卉系列",
+                "prompt": "Interior painting in David Hockney style, open window looking onto a sunlit garden, vase of flowers on a table, flat planes of vivid color, graphic outlines, bright optimistic atmosphere, painterly texture, contemporary British art --ar 3:4 --s 750 --v 6.1",
+                "note": "和泳池系列交替排，画面会更丰富",
+            },
+        ],
+        "cover_text": "80多岁 还在iPad上画画",
+        "title": "80多岁还在iPad上画画 他凭什么卖到6亿？",
+        "body": """很多人到80岁的时候
+已经不太愿意学新东西了吧
+
+但David Hockney不是
+
+这位老爷子80多岁
+还在iPad上画画
+而且不是玩玩而已
+是真的拿去做展览 卖高价 继续影响一代人
+
+我第一次知道这事的时候
+脑子里只有一个想法：
+
+这也太酷了
+
+🎨 他是谁
+
+David Hockney
+大卫·霍克尼
+英国国宝级画家
+在世最贵艺术家之一
+
+很多人认识他
+是因为那张特别有名的泳池画
+蓝得像加州的夏天被定格住了
+
+但我越来越觉得
+他最厉害的不是画泳池
+而是他从来不把工具当边界
+
+年轻时画油画
+后来玩摄影拼贴
+再后来直接上iPad
+
+别人一把年纪了开始怀旧
+他一把年纪了还在更新系统
+
+这真的很可怕
+
+📌 他凭什么能一直值钱
+
+不是因为会某一种技法
+而是因为他总能把新的媒介
+变成自己的语言
+
+泳池也好 iPad也好
+本质上他画的都是同一件事：
+光
+空间
+还有那种让人想住进去的生活感
+
+🤖 我顺手让AI学了下他的风格（AI辅助创作🤖）
+
+颜色 学得很快
+泳池的水波纹 也能学个七八分
+
+但AI有个地方总差一点
+它会画出漂亮的画面
+却很难画出霍克尼那种
+「我真的热爱生活」
+的明亮劲儿
+
+所以看到他80多岁还在iPad上画
+我反而觉得
+这不是科技新闻
+这是一个艺术家最厉害的地方：
+他一直没有停下来
+
+你觉得画家的价值更重要的是技术
+还是不断更新自己的眼光？👇
+
+⚠️ 本文部分图片由AI辅助生成""",
+        "hashtags": "#当代艺术 #DavidHockney #霍克尼 #iPad绘画 #画家故事 #AI绘画 #AI油画 #油画 #画家推荐 #艺术科普",
+    },
+
+    # ===== Day 11：名画破次元壁（防风控+强引流） =====
+    {
+        "day_label": "Day 11",
+        "type": "名画破次元壁",
+        "theme": "赵本山×范伟：中式喜剧遇上西方名画",
+        "why": "『超级反差萌』+『手持实物画』真实感，极强社交分享属性。利用国民级喜剧人物破圈。",
+        "time": "21:00",
+        "prompts": [
+            {
+                "desc": "图1·封面：赵本山×梵高（务必做成手持图）",
+                "prompt": "Oil painting of a Chinese man looking like Zhao Benshan wearing Vincent van Gogh's green coat and fur hat with a bandaged ear, smoking a pipe, painted in van Gogh's post-impressionist style, thick impasto brushstrokes, vibrant orange and red background, museum quality --ar 3:4 --v 6.1 --s 500",
+                "note": "⚠️ 生成后，用PS或Canva把它合成到一张真实的『手拿画纸』实景照片中（或者直接打印出来拿在手里拍），这样能有爆款的真实感！"
+            },
+            {
+                "desc": "图2：范伟×蒙娜丽莎",
+                "prompt": "Oil painting of a Chinese man looking like Fan Wei with a round face and glasses, wearing the costume of Mona Lisa, smiling mysteriously, painted in Leonardo da Vinci renaissance style, sfumato technique, classical landscape background, cracked oil paint texture --ar 3:4 --v 6.1 --s 500",
+                "note": "把范伟憨厚的表情和蒙娜丽莎的神秘微笑结合，喜感极强。"
+            },
+            {
+                "desc": "图3：赵本山与范伟×《呐喊》",
+                "prompt": "Oil painting in Edvard Munch's The Scream style, two Chinese men looking like Zhao Benshan and Fan Wei standing on a bridge under a swirling red and orange sky, expressive wavy brushstrokes, existential angst mixed with comedic confusion --ar 3:4 --v 6.1 --s 600",
+                "note": "荒诞感拉满，适合放在最后做压轴。"
+            }
+        ],
+        "cover_text": "在美术馆看到这幅画，我差点没绷住🤣",
+        "title": "梵高看了想报警：本山版自画像？哈哈哈哈",
+        "body": """朋友说想看点不一样的艺术
+于是我用 AI 把赵本山、范伟和西方名画融合了一下...
+
+出来的结果就是：
+西方艺术的深沉，遇上了东方喜剧的灵魂。
+别说，这厚涂的笔触，这忧郁的眼神，还真有点后印象派内味了！🎨
+
+拿着这幅画的时候，我脑子里自动响起了那句：
+“艺术，就是把简单的问题复杂化...”
+
+向右滑看原图细节👉（这肌理感绝了）
+
+你们还想看谁和哪幅名画结合？
+评论区点单，点赞最高的我明天用 AI 画出来👇
+
+⚠️ 郑重声明：本文图片为 AI 技术合成的艺术脑洞二创，纯属致敬和娱乐交流，非真实照片，无任何商业用途。如有侵权请联系删除。""",
+        "hashtags": "#梵高 #赵本山 #范伟 #AI绘画 #搞笑油画 #当代艺术 #油画 #恶搞名画 #Midjourney #艺术脑洞",
+    },
 ]
+
+
+def _get_weekday_package_index(target_date: datetime.datetime) -> int:
+    """根据日期返回默认内容包索引。今天固定推送破次元壁爆款系列。"""
+    weekday = target_date.weekday()
+
+    if weekday == 4:
+        return 14  # 周五(今天)→赵本山与范伟破次元壁爆款
+
+    weekday_map = {
+        0: 12,  # 周一→Cy Twombly（反差+金钱+争议）
+        1: 6,   # 周二→Flora（90后画家一幅画2000万，延续天价路线）
+        2: 8,   # 周三→AI vs Hockney对比（话题性冲评论）
+        3: 14,  # 周四→赵本山与范伟破次元壁爆款
+        5: 5,   # 周六→光影解析（周末深度长文）
+        6: 7,   # 周日→莫兰迪AI油画合集（视觉治愈）
+    }
+    return weekday_map.get(weekday, 14)
 
 
 def get_today_package() -> dict:
@@ -1024,19 +1191,7 @@ def get_today_package() -> dict:
         }
     else:
         # 2. 按星期匹配最合适的内容包
-        weekday = datetime.datetime.now().weekday()
-        # 星期→内容包映射（基于第1周数据更新：互动率OK但曝光低，优先高冲击力内容）
-        # 数据：封面CTR6.3%✅ 点赞率25%✅ 收藏率7.1%✅ 但曝光仅386→需要加量+加冲击力标题
-        weekday_map = {
-            0: 12, # 周一→Cy Twombly（复制爆款公式：反差+金钱+悬疑）
-            1: 6,  # 周二→Flora（90后画家一幅画2000万，延续天价路线）
-            2: 8,  # 周三→AI vs Hockney对比（话题性冲评论）
-            3: 1,  # 周四→画家介绍Richter（信息差内容）
-            4: 11, # 周五→蓝色AI油画合集🆕（竞品验证蓝色=点赞王，CTR冲8%）
-            5: 5,  # 周六→光影解析（深度长文周末发）
-            6: 7,  # 周日→莫兰迪AI油画合集（视觉治愈）
-        }
-        idx = weekday_map.get(weekday, 0)
+        idx = _get_weekday_package_index(datetime.datetime.now())
         package = DAILY_PACKAGES[idx].copy()
         package["time"] = rec["recommended_time"]
         package["is_holiday"] = False
@@ -1054,8 +1209,6 @@ def get_weekly_packages() -> list:
 
     today = datetime.datetime.now()
     packages = []
-
-    weekday_map = {0: 12, 1: 6, 2: 8, 3: 1, 4: 11, 5: 5, 6: 7}
 
     for i in range(7):
         date = today + datetime.timedelta(days=i)
@@ -1076,7 +1229,7 @@ def get_weekly_packages() -> list:
                 "is_holiday": True,
             }
         else:
-            idx = weekday_map.get(weekday, 0)
+            idx = _get_weekday_package_index(date)
             pkg = {
                 "date": date.strftime("%m月%d日"),
                 "weekday": day_name,

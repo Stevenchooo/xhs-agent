@@ -201,5 +201,20 @@
     ],
     "review_date": "2026-03-17T10:52:22",
     "review_id": 10
+  },
+  {
+    "date": "2026-03-16",
+    "total_posts": 5,
+    "followers": 22,
+    "followers_gain": 22,
+    "avg_views": 429,
+    "avg_likes": 21,
+    "avg_saves": 6,
+    "avg_comments": 3,
+    "best_post": "数据飞涨期",
+    "best_type": "AI油画合集",
+    "best_post_views": 2148,
+    "review_date": "2026-03-17T18:30:55.829882",
+    "review_id": 11
   }
 ]
