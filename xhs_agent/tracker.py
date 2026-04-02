@@ -3,7 +3,7 @@
 import json
 import os
 import datetime
-from .config import ANALYTICS_FILE, CONTENT_HISTORY_FILE, DATA_DIR
+from .config import ANALYTICS_FILE, CONTENT_HISTORY_FILE, DATA_DIR, OPERATIONS_SNAPSHOT_FILE
 
 COMPETITOR_FILE = os.path.join(DATA_DIR, "competitors.json")
 
@@ -13,20 +13,47 @@ def _ensure_dir():
     os.makedirs(DATA_DIR, exist_ok=True)
 
 
-def _load_json(filepath: str) -> dict:
-    """加载JSON文件"""
+def _backup_corrupted_file(filepath: str):
+    """备份损坏或结构异常的 JSON 文件。"""
+    if not os.path.exists(filepath):
+        return
+    backup_path = f"{filepath}.bak-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+    try:
+        os.replace(filepath, backup_path)
+    except OSError:
+        pass
+
+
+def _load_json(filepath: str, default_factory=dict) -> dict:
+    """加载 JSON 文件；缺失、损坏或结构异常时返回默认值。"""
     _ensure_dir()
     if os.path.exists(filepath):
-        with open(filepath, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return data
+            _backup_corrupted_file(filepath)
+        except (json.JSONDecodeError, OSError, ValueError):
+            _backup_corrupted_file(filepath)
+    return default_factory()
 
 
 def _save_json(filepath: str, data: dict):
-    """保存JSON文件"""
+    """原子保存 JSON 文件。"""
     _ensure_dir()
-    with open(filepath, "w", encoding="utf-8") as f:
+    temp_path = f"{filepath}.tmp"
+    with open(temp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(temp_path, filepath)
+
+
+def _next_id(items: list) -> int:
+    """返回列表中下一个可用整数 ID。"""
+    if not items:
+        return 1
+    max_id = max((int(item.get("id", 0) or 0) for item in items), default=0)
+    return max_id + 1
 
 
 # ==================== 账号信息管理 ====================
@@ -55,7 +82,7 @@ def add_post_record(record: dict):
     if "posts" not in data:
         data["posts"] = []
 
-    record["id"] = len(data["posts"]) + 1
+    record["id"] = _next_id(data["posts"])
     record["created_at"] = datetime.datetime.now().isoformat()
     if "metrics" not in record:
         record["metrics"] = []
@@ -226,6 +253,39 @@ def get_trend_data() -> list:
     return trend
 
 
+# ==================== 运营面板快照 ====================
+
+def save_operations_snapshot(snapshot: dict) -> dict:
+    """保存最新运营面板快照，用于补足今日执行所需的即时数据。"""
+    data = _load_json(OPERATIONS_SNAPSHOT_FILE)
+    snapshots = data.get("snapshots", [])
+    enriched = {
+        **snapshot,
+        "recorded_at": datetime.datetime.now().isoformat(),
+    }
+    snapshots.append(enriched)
+    data["snapshots"] = snapshots
+    data["latest"] = enriched
+    _save_json(OPERATIONS_SNAPSHOT_FILE, data)
+    return enriched
+
+
+def get_operations_snapshots() -> list:
+    """获取所有运营面板快照。"""
+    data = _load_json(OPERATIONS_SNAPSHOT_FILE)
+    return data.get("snapshots", [])
+
+
+def get_latest_operations_snapshot() -> dict:
+    """获取最近一次运营面板快照。"""
+    data = _load_json(OPERATIONS_SNAPSHOT_FILE)
+    latest = data.get("latest")
+    if latest:
+        return latest
+    snapshots = data.get("snapshots", [])
+    return snapshots[-1] if snapshots else {}
+
+
 # ==================== 竞品追踪 ====================
 
 def add_competitor(info: dict) -> int:
@@ -234,7 +294,7 @@ def add_competitor(info: dict) -> int:
     if "competitors" not in data:
         data["competitors"] = []
 
-    info["id"] = len(data["competitors"]) + 1
+    info["id"] = _next_id(data["competitors"])
     info["created_at"] = datetime.datetime.now().isoformat()
     if "viral_posts" not in info:
         info["viral_posts"] = []
@@ -311,6 +371,153 @@ def get_weekly_snapshots() -> list:
     return data.get("weekly_snapshots", [])
 
 
+def _current_week_key() -> str:
+    """返回当前周标识，用于控制周度自动刷新。"""
+    return datetime.datetime.now().strftime("%Y-W%W")
+
+
+def _get_stage_label_by_followers(followers: int) -> str:
+    """根据粉丝数返回简化阶段名，避免跨模块强依赖。"""
+    if followers < 1000:
+        return "冷启动期"
+    if followers < 10000:
+        return "成长期"
+    if followers < 100000:
+        return "爆发期"
+    return "稳定期"
+
+
+def _build_adaptive_tool_profile() -> dict:
+    """基于当前账号数据生成周度工具策略档案。"""
+    account = get_account_info()
+    stats = get_overall_stats()
+    insights = extract_historical_insights()
+    snapshot = get_latest_operations_snapshot()
+
+    followers = int(account.get("followers", 0) or 0)
+    total_posts = int(stats.get("total_posts", 0) or 0)
+    stage_label = _get_stage_label_by_followers(followers)
+    ranking = insights.get("content_type_ranking") or []
+    primary_type = ranking[0]["type"] if len(ranking) >= 1 else None
+    secondary_type = ranking[1]["type"] if len(ranking) >= 2 else None
+    weak_type = ranking[-1]["type"] if len(ranking) >= 2 else None
+    best_titles = [p.get("title", "") for p in (insights.get("top_posts") or [])[:2] if p.get("title")]
+    best_posting_time = insights.get("best_posting_time")
+    best_posting_day = insights.get("best_posting_day")
+
+    metrics = snapshot.get("metrics", {})
+    sources = snapshot.get("traffic_sources") or []
+    primary_source = sources[0] if sources else {}
+    peak_hour = (snapshot.get("viewer_time") or {}).get("peak_hour_label", "")
+
+    update_note_parts = [f"本周工具已按当前账号状态自动刷新：{followers}粉，累计{total_posts}篇笔记"]
+    if primary_type:
+        update_note_parts.append(f"当前主力内容是「{primary_type}」")
+    if secondary_type and secondary_type != primary_type:
+        update_note_parts.append(f"可辅助放大的内容是「{secondary_type}」")
+    if weak_type and weak_type not in {primary_type, secondary_type}:
+        update_note_parts.append(f"相对偏弱的是「{weak_type}」")
+    if best_posting_time:
+        update_note_parts.append(f"历史最佳发布时间约在{best_posting_time}")
+    if primary_source.get("name"):
+        update_note_parts.append(f"近期主要流量来源是{primary_source.get('name')} {primary_source.get('percent', 0)}%")
+    if peak_hour:
+        update_note_parts.append(f"高峰时段集中在{peak_hour}")
+
+    weekly_actions = []
+    if primary_type:
+        weekly_actions.append(f"本周至少安排 2 篇「{primary_type}」内容，持续放大已验证有效的方向。")
+    if secondary_type and secondary_type != primary_type:
+        weekly_actions.append(f"用 1-2 篇「{secondary_type}」做辅助，避免账号完全单一。")
+    if weak_type and weak_type not in {primary_type, secondary_type}:
+        weekly_actions.append(f"对「{weak_type}」先优化标题和封面，再决定是否继续高频投入。")
+    if best_titles:
+        weekly_actions.append(f"优先复用这类标题结构：{best_titles[0]}")
+    if best_posting_time:
+        weekly_actions.append(f"主力内容优先放在 {best_posting_time} 前后发布。")
+    if metrics.get("avg_watch_seconds") and float(metrics.get("avg_watch_seconds", 0)) < 25:
+        weekly_actions.append("本周所有主推内容都要把前 3 句改短，先抢停留再谈信息量。")
+
+    dynamic_audience_hint = "近期账号更适合做『先钩子、再解释、最后互动』的名画故事型内容。"
+    if best_titles:
+        dynamic_audience_hint = f"近期用户更容易被『{best_titles[0]}』这类反差型标题吸引，说明故事性和认知反转仍是主轴。"
+
+    return {
+        "week_key": _current_week_key(),
+        "generated_at": datetime.datetime.now().isoformat(),
+        "account": {
+            "nickname": account.get("nickname", ""),
+            "followers": followers,
+            "total_posts": total_posts,
+            "stage": stage_label,
+        },
+        "content_focus": {
+            "primary_type": primary_type,
+            "secondary_type": secondary_type,
+            "weak_type": weak_type,
+            "best_titles": best_titles,
+            "mix_suggestion": insights.get("content_mix_suggestion") or [],
+        },
+        "posting_focus": {
+            "best_time": best_posting_time,
+            "best_day": best_posting_day,
+            "traffic_source": primary_source,
+            "peak_hour_label": peak_hour,
+        },
+        "weekly_update_note": "；".join(update_note_parts) + "。",
+        "weekly_actions": weekly_actions[:5],
+        "dynamic_audience_hint": dynamic_audience_hint,
+    }
+
+
+def _parse_iso_datetime(value: str):
+    """安全解析 ISO 时间字符串。"""
+    if not value:
+        return None
+    try:
+        return datetime.datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _adaptive_profile_matches_snapshot(profile: dict, snapshot: dict) -> bool:
+    """判断缓存档案是否仍与最新运营快照一致。"""
+    if not profile or not snapshot:
+        return True
+
+    posting_focus = profile.get("posting_focus") or {}
+    cached_source = posting_focus.get("traffic_source") or {}
+    latest_source = (snapshot.get("traffic_sources") or [{}])[0] if snapshot.get("traffic_sources") else {}
+    cached_peak_hour = posting_focus.get("peak_hour_label") or ""
+    latest_peak_hour = (snapshot.get("viewer_time") or {}).get("peak_hour_label", "")
+
+    return (
+        cached_source.get("name") == latest_source.get("name")
+        and float(cached_source.get("percent") or 0) == float(latest_source.get("percent") or 0)
+        and cached_peak_hour == latest_peak_hour
+    )
+
+
+def get_adaptive_tool_profile(force_refresh: bool = False) -> dict:
+    """获取周度自适应工具档案；每周自动刷新一次。"""
+    data = _load_json(ANALYTICS_FILE)
+    profile = data.get("adaptive_tool_profile") or {}
+    if not force_refresh and profile.get("week_key") == _current_week_key():
+        latest_snapshot = get_latest_operations_snapshot()
+        profile_time = _parse_iso_datetime(profile.get("generated_at"))
+        snapshot_time = _parse_iso_datetime(latest_snapshot.get("recorded_at"))
+        if (
+            (not snapshot_time or (profile_time and snapshot_time <= profile_time))
+            and _adaptive_profile_matches_snapshot(profile, latest_snapshot)
+        ):
+            return profile
+
+    profile = _build_adaptive_tool_profile()
+    data["adaptive_tool_profile"] = profile
+    _save_json(ANALYTICS_FILE, data)
+    return profile
+
+
 # ==================== 发后追踪 ====================
 
 POST_TRACKING_FILE = os.path.join(DATA_DIR, "post_tracking.json")
@@ -323,7 +530,7 @@ def start_post_tracking(post_info: dict) -> int:
         data["tracking"] = []
 
     tracking = {
-        "id": len(data["tracking"]) + 1,
+        "id": _next_id(data["tracking"]),
         "title": post_info.get("title", ""),
         "content_type": post_info.get("content_type", ""),
         "publish_time": datetime.datetime.now().isoformat(),
@@ -945,7 +1152,7 @@ def save_funnel_record(record: dict) -> int:
     if "records" not in data:
         data["records"] = []
 
-    record["id"] = len(data["records"]) + 1
+    record["id"] = _next_id(data["records"])
     record["recorded_at"] = datetime.datetime.now().isoformat()
     record["date"] = datetime.datetime.now().strftime("%Y-%m-%d")
 

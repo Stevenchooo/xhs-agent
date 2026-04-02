@@ -5,6 +5,192 @@
 """
 
 import datetime
+import difflib
+import re
+
+
+def _attach_data_driven_context(package: dict) -> dict:
+    """附加基于 tracker 的执行摘要字段；无数据时仍有兜底文案。"""
+    try:
+        from .strategy import get_data_driven_execution_brief
+        from .tracker import get_adaptive_tool_profile
+
+        brief = get_data_driven_execution_brief()
+        adaptive = get_adaptive_tool_profile()
+        package["data_driven_note"] = brief.get("note", "")
+        package["tool_focus"] = brief.get("tool_focus") or []
+        package["execution_focus"] = brief.get("execution_focus") or []
+        package["weekly_update_note"] = adaptive.get("weekly_update_note", "")
+        package["weekly_actions"] = adaptive.get("weekly_actions") or []
+        package["adaptive_profile"] = adaptive
+    except Exception:
+        package.setdefault("data_driven_note", "数据暂不可用，请先完成笔记追踪后再试。")
+        package.setdefault("tool_focus", [])
+        package.setdefault("execution_focus", [])
+        package.setdefault("weekly_update_note", "")
+        package.setdefault("weekly_actions", [])
+        package.setdefault("adaptive_profile", {})
+    return package
+
+
+def _normalize_text(value: str) -> str:
+    """标准化标题/主题，便于和历史已发内容做弱匹配。"""
+    return re.sub(r"[^0-9a-zA-Z\u4e00-\u9fff]+", "", (value or "").lower())
+
+
+def _get_package_topic_id(package: dict) -> str:
+    """获取内容包稳定 topic_id；老包没有显式 ID 时退回到 theme/title 派生。"""
+    explicit = package.get("topic_id")
+    if explicit:
+        return explicit
+    fallback = package.get("theme") or package.get("title") or package.get("cover_text") or ""
+    return _normalize_text(fallback)
+
+
+def _package_text_candidates(package: dict) -> list:
+    candidates = [
+        _normalize_text(package.get("title", "")),
+        _normalize_text(package.get("theme", "")),
+        _normalize_text(package.get("cover_text", "")),
+        _normalize_text(_get_package_topic_id(package)),
+    ]
+    for alias in package.get("dedupe_aliases", []) or []:
+        candidates.append(_normalize_text(alias))
+    return candidates
+
+
+def _load_published_signals() -> dict:
+    """读取已发布内容的 topic_id 与文本信号，供今日/本周排期避让。"""
+    try:
+        from .tracker import get_all_posts
+
+        texts = []
+        topic_ids = set()
+        for post in get_all_posts():
+            topic_id = _normalize_text(post.get("topic_id", ""))
+            if topic_id:
+                topic_ids.add(topic_id)
+            for field in ("title", "notes"):
+                normalized = _normalize_text(post.get(field, ""))
+                if normalized:
+                    texts.append(normalized)
+        return {"topic_ids": topic_ids, "texts": texts}
+    except Exception:
+        return {"topic_ids": set(), "texts": []}
+
+
+def _package_has_been_published(package: dict, published_signals: dict) -> bool:
+    """判断内容包是否已发布过。优先 topic_id，再用 alias/title/theme 做弱匹配。"""
+    candidates = [text for text in _package_text_candidates(package) if text]
+    published_texts = published_signals.get("texts", []) or []
+    published_topic_ids = published_signals.get("topic_ids", set()) or set()
+    if _normalize_text(_get_package_topic_id(package)) in published_topic_ids:
+        return True
+    if not candidates or (not published_texts and not published_topic_ids):
+        return False
+
+    for candidate in candidates:
+        for published in published_texts:
+            if candidate == published:
+                return True
+            if candidate and published and (candidate in published or published in candidate):
+                return True
+            if len(candidate) >= 8 and len(published) >= 8:
+                ratio = difflib.SequenceMatcher(None, candidate, published).ratio()
+                if ratio >= 0.62:
+                    return True
+    return False
+
+
+def _get_package_candidate_indices(target_date: datetime.datetime) -> list:
+    """返回某一天的候选内容包索引，前面的优先级更高。"""
+    weekday = target_date.weekday()
+    candidates = []
+
+    date_override_map = {
+        (2026, 3, 17): 14,
+        (2026, 3, 23): 14,
+    }
+    override_idx = date_override_map.get((target_date.year, target_date.month, target_date.day))
+    if override_idx is not None:
+        candidates.append(override_idx)
+
+    if weekday == 4:
+        candidates.append(14)
+
+    weekday_map = {
+        0: 12,
+        1: 6,
+        2: 8,
+        3: 14,
+        5: 5,
+        6: 7,
+    }
+    default_idx = weekday_map.get(weekday, 14)
+    candidates.append(default_idx)
+
+    for idx in range(len(DAILY_PACKAGES)):
+        if idx not in candidates:
+            candidates.append(idx)
+    return candidates
+
+
+def _get_creative_candidate_indices(target_date: datetime.datetime) -> list:
+    """按星期返回高想象力主题池的候选顺序。"""
+    weekday = target_date.weekday()
+    date_override_map = {
+        (2026, 3, 30): [7, 0, 4],
+    }
+    override = date_override_map.get((target_date.year, target_date.month, target_date.day))
+    if override is not None:
+        preferred = list(override)
+    else:
+        weekday_map = {
+            0: [0, 4, 1],
+            1: [1, 0, 5],
+            2: [2, 6, 3],
+            3: [3, 1, 4],
+            4: [5, 2, 6],
+            5: [4, 6, 0],
+            6: [6, 3, 2],
+        }
+        preferred = list(weekday_map.get(weekday, [0, 1, 2]))
+    for idx in range(len(CREATIVE_PACKAGES)):
+        if idx not in preferred:
+            preferred.append(idx)
+    return preferred
+
+
+def _iter_candidate_packages(target_date: datetime.datetime):
+    """先产出创意池，再回退到已验证基础池。"""
+    seen_topic_ids = set()
+
+    for idx in _get_creative_candidate_indices(target_date):
+        package = CREATIVE_PACKAGES[idx].copy()
+        topic_id = _get_package_topic_id(package)
+        if topic_id not in seen_topic_ids:
+            seen_topic_ids.add(topic_id)
+            yield package
+
+    for idx in _get_package_candidate_indices(target_date):
+        package = DAILY_PACKAGES[idx].copy()
+        topic_id = _get_package_topic_id(package)
+        if topic_id not in seen_topic_ids:
+            seen_topic_ids.add(topic_id)
+            yield package
+
+
+def _pick_unpublished_package(target_date: datetime.datetime) -> dict:
+    """按优先级挑选一个未发布过的内容包；如果都发过则退回首个候选。"""
+    published_signals = _load_published_signals()
+    candidate_packages = list(_iter_candidate_packages(target_date))
+    fallback = candidate_packages[0].copy()
+
+    for package in candidate_packages:
+        if not _package_has_been_published(package, published_signals):
+            return package
+    return fallback
+
 
 # ==================== 内容包库（基于数据优化后） ====================
 DAILY_PACKAGES = [
@@ -1083,23 +1269,23 @@ David Hockney
         "hashtags": "#当代艺术 #DavidHockney #霍克尼 #iPad绘画 #画家故事 #AI绘画 #AI油画 #油画 #画家推荐 #艺术科普",
     },
 
-    # ===== Day 11：名画破次元壁（防风控+强引流） =====
+    # ===== Day 11：名画破次元壁（今日主推） =====
     {
         "day_label": "Day 11",
         "type": "名画破次元壁",
         "theme": "赵本山×范伟：中式喜剧遇上西方名画",
-        "why": "『超级反差萌』+『手持实物画』真实感，极强社交分享属性。利用国民级喜剧人物破圈。",
+        "why": "国民级喜剧人物 + 西方名画的强反差，自带点击和评论欲。今天主打『先笑一下，再被画面质感留住』的破圈内容。",
         "time": "21:00",
         "prompts": [
             {
-                "desc": "图1·封面：赵本山×梵高（务必做成手持图）",
+                "desc": "图1·封面：赵本山×梵高（优先做成手持图）",
                 "prompt": "Oil painting of a Chinese man looking like Zhao Benshan wearing Vincent van Gogh's green coat and fur hat with a bandaged ear, smoking a pipe, painted in van Gogh's post-impressionist style, thick impasto brushstrokes, vibrant orange and red background, museum quality --ar 3:4 --v 6.1 --s 500",
-                "note": "⚠️ 生成后，用PS或Canva把它合成到一张真实的『手拿画纸』实景照片中（或者直接打印出来拿在手里拍），这样能有爆款的真实感！"
+                "note": "生成后可合成到真实『手拿画纸』场景里，首图更像现实拍到的展览海报，点击率会更高。"
             },
             {
                 "desc": "图2：范伟×蒙娜丽莎",
                 "prompt": "Oil painting of a Chinese man looking like Fan Wei with a round face and glasses, wearing the costume of Mona Lisa, smiling mysteriously, painted in Leonardo da Vinci renaissance style, sfumato technique, classical landscape background, cracked oil paint texture --ar 3:4 --v 6.1 --s 500",
-                "note": "把范伟憨厚的表情和蒙娜丽莎的神秘微笑结合，喜感极强。"
+                "note": "这张负责做反差包袱：一本正经，但越看越绷不住。"
             },
             {
                 "desc": "图3：赵本山与范伟×《呐喊》",
@@ -1107,45 +1293,451 @@ David Hockney
                 "note": "荒诞感拉满，适合放在最后做压轴。"
             }
         ],
-        "cover_text": "在美术馆看到这幅画，我差点没绷住🤣",
-        "title": "梵高看了想报警：本山版自画像？哈哈哈哈",
-        "body": """朋友说想看点不一样的艺术
-于是我用 AI 把赵本山、范伟和西方名画融合了一下...
+        "cover_text": "赵本山×范伟 乱入西方名画",
+        "title": "名画破次元壁｜赵本山×范伟：中式喜剧遇上西方名画",
+        "body": """如果赵本山和范伟突然闯进西方名画里
+会发生什么？
 
-出来的结果就是：
-西方艺术的深沉，遇上了东方喜剧的灵魂。
-别说，这厚涂的笔触，这忧郁的眼神，还真有点后印象派内味了！🎨
+我本来以为会很出戏
+结果越看越不对劲
 
-拿着这幅画的时候，我脑子里自动响起了那句：
-“艺术，就是把简单的问题复杂化...”
+他们那种中式喜剧里的表情、停顿和关系感
+放进古典油画的构图里
+居然有一种奇怪的合理
 
-向右滑看原图细节👉（这肌理感绝了）
+一个负责让画面绷不住
+一个负责让你越看越想笑
 
-你们还想看谁和哪幅名画结合？
-评论区点单，点赞最高的我明天用 AI 画出来👇
+但最好玩的不是搞笑
+而是这种反差真的会把画面记忆点拉满
 
-⚠️ 郑重声明：本文图片为 AI 技术合成的艺术脑洞二创，纯属致敬和娱乐交流，非真实照片，无任何商业用途。如有侵权请联系删除。""",
-        "hashtags": "#梵高 #赵本山 #范伟 #AI绘画 #搞笑油画 #当代艺术 #油画 #恶搞名画 #Midjourney #艺术脑洞",
+向右滑看细节
+第1张最适合做封面
+第2张属于越看越离谱
+第3张荒诞感直接拉满
+
+下一期你最想看谁闯进名画里？
+葛优、周星驰、沈腾，还是继续范德彪宇宙👇""",
+        "hashtags": "#名画破次元壁 #赵本山 #范伟 #西方名画 #艺术脑洞 #搞笑油画 #当代艺术 #油画 #Midjourney #小红书创作灵感",
+    },
+]
+
+
+CREATIVE_PACKAGES = [
+    {
+        "topic_id": "creative-vermeer-surveillance-night",
+        "day_label": "Creative 1",
+        "type": "反常理名画脑洞",
+        "theme": "如果维米尔拍到了凌晨四点的监控画面",
+        "why": "把古典静谧感和当代监控视角拼在一起，天然有反差，也更容易做出‘一眼停住’的新鲜感。",
+        "time": "21:00",
+        "dedupe_aliases": ["维米尔 监控画面", "凌晨四点 监控 名画"],
+        "prompts": [
+            {
+                "desc": "图1·封面：维米尔式监控截图",
+                "prompt": "Surveillance camera still in Johannes Vermeer style, a nearly empty convenience store aisle at 4 AM, cold fluorescent light transformed into soft pearl-like window light, quiet cinematic stillness, subtle Dutch interior realism, visible oil texture --ar 3:4 --s 700 --v 6.1",
+                "note": "重点要做出“监控画面居然很高级”的违和感",
+            },
+            {
+                "desc": "图2-4：不同凌晨场景",
+                "prompt": "Oil painting of a 4 AM apartment corridor in Johannes Vermeer style, surveillance perspective from a high corner, one person holding milk and keys, soft silence, muted blue-grey palette, luminous skin tones, museum quality realism --ar 3:4 --s 700 --v 6.1",
+                "note": "场景可以换成电梯口、走廊、楼下便利店",
+            },
+        ],
+        "cover_text": "如果维米尔拍到了凌晨四点的监控画面",
+        "title": "如果维米尔拍到了凌晨四点的监控画面",
+        "body": """我最近突然在想一个问题
+
+如果维米尔活在今天
+他会不会根本不画窗边少女了
+
+而是去截一张凌晨四点的监控画面
+
+一个人拿着牛奶回家
+便利店灯光冷得要命
+电梯口空空的
+
+这种画面按理说很“现实”
+但一旦套进维米尔的光
+居然有种安静到不敢说话的高级感
+
+我试着用AI把这种时刻画成油画
+出来的感觉很奇怪
+不像复古
+也不像未来
+更像是“被生活偷偷拍下来的名画”
+
+你们觉得第几张最像真的会挂进美术馆？
+评论区告诉我👇""",
+        "hashtags": "#维米尔 #油画 #当代艺术 #AI绘画 #AI油画 #名画脑洞 #美术馆 #深夜氛围 #艺术灵感 #值得收藏",
+    },
+    {
+        "topic_id": "creative-convenience-store-between-hopper-hockney",
+        "day_label": "Creative 2",
+        "type": "风格对撞",
+        "theme": "凌晨两点的便利店，夹在霍普和Hockney之间",
+        "why": "Edward Hopper 的孤独和 Hockney 的明亮生活感是完全相反的两套气质，把它们放进同一场景，很容易形成讨论和记忆点。",
+        "time": "21:00",
+        "dedupe_aliases": ["霍普 Hockney 便利店", "凌晨两点 便利店 油画"],
+        "prompts": [
+            {
+                "desc": "图1·封面：同一便利店场景做风格对撞",
+                "prompt": "Late-night convenience store at 2 AM, split mood between Edward Hopper loneliness and David Hockney bright color geometry, fluorescent shelves, one customer choosing drinks, cinematic stillness, painterly oil texture --ar 3:4 --s 800 --v 6.1",
+                "note": "封面文案要突出“同一场景 两种世界”",
+            },
+            {
+                "desc": "图2-5：偏霍普/偏Hockney版本",
+                "prompt": "Oil painting of a 2 AM convenience store in Edward Hopper style, lonely urban silence, long shadows, pale green fridge light, one figure standing still, melancholy cinematic realism --ar 3:4 --s 750 --v 6.1",
+                "note": "再补一版 Hockney 风格做对照：bright turquoise, flat planes, California-like clarity",
+            },
+        ],
+        "cover_text": "凌晨两点的便利店 夹在霍普和Hockney之间",
+        "title": "凌晨两点的便利店，夹在霍普和Hockney之间",
+        "body": """同样是一个便利店
+
+Edward Hopper 来画
+它会像一种城市病
+
+David Hockney 来画
+它又会像一部彩色电影的定格
+
+我最喜欢这种完全不相干的两个人
+被硬塞进同一个场景里
+
+一个负责把夜色拉长
+一个负责把颜色点亮
+
+于是凌晨两点买水这种再普通不过的小事
+突然就变成了可以挂墙上的东西
+
+我让AI试着把这个场景分别往两边拉
+结果比我想的还明显
+同一盏灯
+在不同画家手里真的是两个世界
+
+如果只能选一边
+你站霍普 还是站Hockney？👇""",
+        "hashtags": "#EdwardHopper #DavidHockney #油画 #AI绘画 #风格对撞 #便利店美学 #当代艺术 #AI油画 #艺术脑洞 #小红书创作灵感",
+    },
+    {
+        "topic_id": "creative-emotion-colorcards-resignation",
+        "day_label": "Creative 3",
+        "type": "情绪拟像合集",
+        "theme": "把“想辞职但又不敢”画成9张油画色卡",
+        "why": "情绪拟像天然适合评论互动，也能做收藏型内容；相比纯画家介绍，这类题更贴近日常情绪和分享欲。",
+        "time": "21:00",
+        "dedupe_aliases": ["情绪 色卡 油画", "想辞职但又不敢"],
+        "prompts": [
+            {
+                "desc": "图1·封面：情绪色卡拼图",
+                "prompt": "Nine-panel oil painting color study representing the feeling of wanting to quit your job but not daring to, muted office greys colliding with bruised blue and burnt orange, painterly texture, emotional abstract palette board --ar 3:4 --s 800 --v 6.1",
+                "note": "适合做 9 宫格合集封面",
+            },
+            {
+                "desc": "图2-9：具体情绪分镜",
+                "prompt": "Abstract oil painting of emotional hesitation, office fluorescent light mixed with sunset orange hope, heavy blue-grey mood, thick brushstrokes, gallery-quality contemporary emotional painting --ar 3:4 --s 800 --v 6.1",
+                "note": "可以拆成压抑、愤怒、麻木、想逃、想活一次等几个情绪",
+            },
+        ],
+        "cover_text": "把“想辞职但又不敢”画成9张油画色卡",
+        "title": "把“想辞职但又不敢”画成9张油画色卡",
+        "body": """有些情绪其实很难说清
+
+比如那种
+每天都想辞职
+但第二天还是准时打开电脑的感觉
+
+它不是单纯的丧
+也不是纯粹的愤怒
+更像一堆很脏的颜色混在一起
+
+所以我试了一件很无聊但又很好玩的事
+把这种情绪拆成9种颜色
+再让AI把它们画成油画
+
+有一张像办公室空调吹到脸上的灰蓝
+有一张像下班路上突然活过来的橘色
+还有一张特别像你明明已经不爱了
+但还是没辞职的那种土黄色
+
+我知道这很抽象
+但你们看到应该会懂
+
+第几张最像你最近的状态？👇""",
+        "hashtags": "#情绪色卡 #油画 #AI绘画 #AI油画 #当代艺术 #色彩美学 #打工人 #治愈系 #艺术灵感 #值得收藏",
+    },
+    {
+        "topic_id": "creative-subway-pop-up-museum",
+        "day_label": "Creative 4",
+        "type": "城市瞬间再造",
+        "theme": "如果上海地铁被临时改造成一间美术馆",
+        "why": "把高频日常场景替换成美术馆语境，很容易形成代入感，也更像‘会被转发给朋友看’的城市脑洞题。",
+        "time": "21:00",
+        "dedupe_aliases": ["上海地铁 美术馆", "地铁站 临时 美术馆"],
+        "prompts": [
+            {
+                "desc": "图1·封面：地铁站变美术馆",
+                "prompt": "Shanghai metro station transformed into a temporary art museum, commuters walking past giant framed oil paintings, polished platform floor reflecting gallery lights, contemporary urban surrealism, painterly realism --ar 3:4 --s 800 --v 6.1",
+                "note": "封面适合做“你每天路过的地方，其实像一间美术馆”",
+            },
+            {
+                "desc": "图2-4：扶梯、站台、换乘通道",
+                "prompt": "Oil painting of a subway escalator reimagined as an art gallery installation, commuters in neutral coats, dramatic museum spotlights, urban contemporary art atmosphere, rich painterly texture --ar 3:4 --s 750 --v 6.1",
+                "note": "做成系列图，日常空间都能变得很像展览现场",
+            },
+        ],
+        "cover_text": "如果上海地铁被临时改造成一间美术馆",
+        "title": "如果上海地铁被临时改造成一间美术馆",
+        "body": """我每天坐地铁的时候都会有一种错觉
+
+有些站台其实特别像展览现场
+
+只是我们走太快了
+快到根本来不及把它当成一个画面去看
+
+所以我试着做了一个很荒谬的想象
+如果地铁站突然不再只是地铁站
+而是一间临时美术馆
+
+扶梯变成作品入口
+站台灯光像展陈
+换乘通道像大型装置
+
+那些每天赶路的人
+也一下子变得很像画里的人
+
+最妙的是
+你会发现城市里很多最普通的地方
+其实只差一个观看方式
+
+你最想把哪一个城市角落改造成美术馆？👇""",
+        "hashtags": "#上海地铁 #美术馆 #油画 #AI绘画 #城市美学 #当代艺术 #AI油画 #艺术脑洞 #城市摄影 #值得收藏",
+    },
+    {
+        "topic_id": "creative-richter-vlog-day",
+        "day_label": "Creative 5",
+        "type": "画家人格想象",
+        "theme": "如果Richter也拍小红书，他的一天会有多无聊",
+        "why": "把高冷大师人格化，会让内容更轻也更有分享感；同时仍然保留画家和风格本身的搜索价值。",
+        "time": "21:00",
+        "dedupe_aliases": ["Richter 小红书 一天", "里希特 vlog"],
+        "prompts": [
+            {
+                "desc": "图1·封面：画家日常vlog感封面",
+                "prompt": "Gerhard Richter imagined as a minimalist lifestyle vlogger, quiet studio morning, blurred photo-painting mood, coffee cup, paint scraper, soft grey light, painterly cinematic realism --ar 3:4 --s 750 --v 6.1",
+                "note": "封面调性要像“无聊但高级”的日常记录",
+            },
+            {
+                "desc": "图2-5：工作室、走路、看画、刮板细节",
+                "prompt": "Oil painting of an elderly painter in a quiet contemporary studio, Gerhard Richter inspired mood, squeegee and blurred canvases, muted grey-blue palette, reflective and minimal atmosphere --ar 3:4 --s 750 --v 6.1",
+                "note": "把大师拉回日常生活，会比纯介绍更有代入感",
+            },
+        ],
+        "cover_text": "如果Richter也拍小红书 他的一天会有多无聊",
+        "title": "如果Richter也拍小红书，他的一天会有多无聊",
+        "body": """我最近老在想
+
+如果里希特不是活在美术馆里
+而是活在今天的小红书里
+
+他会拍什么
+
+不会是热闹的那种
+大概率是：
+
+早上喝一杯看起来很苦的咖啡
+站在一幅快完成的画前发呆
+拿刮板犹豫十分钟
+最后还是把它刮糊
+
+就这么结束一天
+
+听起来很无聊
+但又莫名很对
+
+因为真正厉害的画家
+可能本来就不是每天都在“灵感爆炸”
+而是在重复、推翻、再重复
+
+我把这种感觉试着画出来之后
+突然觉得大师离我们也没那么远
+
+如果是你
+最想看哪位画家的“一天”？👇""",
+        "hashtags": "#GerhardRichter #里希特 #油画 #AI绘画 #画家日常 #当代艺术 #AI油画 #艺术脑洞 #小红书vlog #艺术科普",
+    },
+    {
+        "topic_id": "creative-deleted-ai-drafts-look-more-real",
+        "day_label": "Creative 6",
+        "type": "废稿反转",
+        "theme": "那些差点被我删掉的AI油画废稿，为什么反而更像真画",
+        "why": "废稿比成品更容易拉停留和讨论，因为用户天然想看‘翻车里藏着什么’。",
+        "time": "21:00",
+        "dedupe_aliases": ["AI油画 废稿", "差点删掉 更像真画"],
+        "prompts": [
+            {
+                "desc": "图1·封面：故意保留瑕疵感的废稿",
+                "prompt": "Oil painting draft with imperfect brushwork and unresolved composition, beautiful accident, painterly texture, visible correction marks, studio work-in-progress atmosphere, strangely more authentic than polished final art --ar 3:4 --s 800 --v 6.1",
+                "note": "封面重点要让人看出‘没完成但更有味道’",
+            },
+            {
+                "desc": "图2-4：不同类型的‘漂亮废稿’",
+                "prompt": "Half-finished AI oil painting with raw brushstroke energy, color shifts, painterly mistakes becoming expressive, studio draft realism, contemporary art atmosphere --ar 3:4 --s 800 --v 6.1",
+                "note": "可以做前后对照：废稿 vs 修完之后",
+            },
+        ],
+        "cover_text": "那些差点被我删掉的AI油画废稿 反而更像真画",
+        "title": "那些差点被我删掉的AI油画废稿，为什么反而更像真画",
+        "body": """我以前做AI图有个毛病
+
+一看到不够完整
+第一反应就是删
+
+但最近我翻以前的废稿
+突然发现一个很奇怪的事
+
+有些图虽然不完美
+却比我最后修好的版本更像真画
+
+可能是因为它们没那么“正确”
+反而保留了那种画到一半的犹豫
+和一点点失控
+
+真正的油画本来就不是一上来就完美的
+它会有改动
+会有脏色
+会有多出来的一笔
+
+AI一旦太顺
+反而容易失去那种人味
+
+所以这次我把几张差点删掉的废稿翻出来
+你们看看
+是不是意外地比成品更有味道
+
+第几张你会留下？👇""",
+        "hashtags": "#AI油画 #油画 #AI绘画 #废稿 #创作过程 #当代艺术 #AI艺术 #艺术灵感 #提示词分享 #值得收藏",
+    },
+    {
+        "topic_id": "creative-painters-groupchat-same-scene",
+        "day_label": "Creative 7",
+        "type": "群聊共创脑洞",
+        "theme": "如果莫奈、Hockney、Richter在一个群里改同一张图",
+        "why": "把大师风格差异做成人格化冲突，既能讲风格，也天然适合评论区站队。",
+        "time": "21:00",
+        "dedupe_aliases": ["莫奈 Hockney Richter 群聊", "同一张图 改图 大师"],
+        "prompts": [
+            {
+                "desc": "图1·封面：三位画家改同一场景",
+                "prompt": "Triptych oil painting showing the same city park scene interpreted by Claude Monet, David Hockney, and Gerhard Richter, each panel with distinct style, dramatic comparison, museum-quality composition --ar 3:4 --s 800 --v 6.1",
+                "note": "封面适合做“三个人改同一张图，结果像三种人生”",
+            },
+            {
+                "desc": "图2-4：单独展开每个人的版本",
+                "prompt": "City park scene painted in Claude Monet style with dappled light and broken color, then in David Hockney flat bright geometry, then in Gerhard Richter blurred photo-painting mood, oil texture, contemporary comparison study --ar 3:4 --s 800 --v 6.1",
+                "note": "一组内容就能把风格差异讲透",
+            },
+        ],
+        "cover_text": "如果莫奈、Hockney、Richter在一个群里改同一张图",
+        "title": "如果莫奈、Hockney、Richter在一个群里改同一张图",
+        "body": """我有时候觉得
+看不同画家改同一个场景
+真的很像看一群性格完全不同的人在群里回消息
+
+莫奈会先说
+先别急 让我把光画碎一点
+
+Hockney会说
+颜色不够亮 再干净一点 再直接一点
+
+Richter大概率一句话不说
+直接给你糊掉
+
+于是同一个场景
+在三个人手里
+就会变成三种完全不同的人生
+
+这也是我现在最喜欢玩的一个方向
+不是让AI只学一个人
+而是让它把差异直接摊开给你看
+
+如果只能选一个人替你改图
+你会把这张图交给谁？👇""",
+        "hashtags": "#莫奈 #DavidHockney #GerhardRichter #油画 #AI绘画 #风格对比 #当代艺术 #AI油画 #艺术科普 #评论区站队",
+    },
+    {
+        "topic_id": "creative-jay-chou-klimt-easter-egg",
+        "day_label": "Creative 8",
+        "type": "流行文化×名画彩蛋",
+        "theme": "周杰伦MV里最狠的，不是滤镜，是藏得最深的那幅名画",
+        "why": "这轮数据已经验证“周董/大众IP + 名画彩蛋 + 强反差标题”是当前最能吃到首页推荐的一条线。今天继续沿着这条母题发，更适合承接爆量后的公域流量。",
+        "time": "19:20",
+        "dedupe_aliases": ["周杰伦 MV 名画彩蛋", "周董 克里姆特", "不是滤镜 是名画"],
+        "prompts": [
+            {
+                "desc": "图1·封面：周董MV里的名画彩蛋主视觉",
+                "prompt": "Realistic cinematic still from a luxurious Mandarin pop music video, East Asian male singer in black-and-gold ornate costume standing in a Klimt-inspired gilded hall, premium lensing, sharp skin texture, dramatic warm light, hidden Gustav Klimt visual language, believable MV screenshot --ar 3:4 --s 650 --v 6.1",
+                "note": "如果直接发成品，优先用已生成的封面页；重跑时控制成更像真实MV截图而不是插画。",
+            },
+            {
+                "desc": "图2·MV画面 vs 名画原型",
+                "prompt": "Editorial comparison card, left side realistic Chinese music video frame in gold romantic atmosphere, right side Gustav Klimt reference painting, premium museum caption styling, ivory and muted gold accents, ultra clean and readable --ar 3:4 --s 500 --v 6.1",
+                "note": "核心是把“原来高级感早就被名画写好了”这一层讲明白。",
+            },
+            {
+                "desc": "图3·为什么会显得很贵",
+                "prompt": "Realistic gold-toned corridor scene from a high-budget Mandarin music video, East Asian male pop star walking through Klimt-inspired architecture, dramatic backlight, authentic camera optics, detail analysis composition with room for annotations --ar 3:4 --s 650 --v 6.1",
+                "note": "用来拆 3 个视觉线索：金色装饰密度、人物被图案包围、画面像名画构图。",
+            },
+            {
+                "desc": "图4·评论区互动收束页",
+                "prompt": "Luxury editorial end card for Xiaohongshu, warm ivory and muted gold, refined collector magazine style, elegant floral and ornamental borders, strong central typography area for interaction question, premium and minimal --ar 3:4 --s 450 --v 6.1",
+                "note": "互动问题就问：你还想看哪支MV里的名画彩蛋？",
+            },
+        ],
+        "cover_text": "周杰伦MV里最狠的 不是滤镜，是藏得最深的那幅名画",
+        "title": "周杰伦MV里最狠的，不是滤镜，是藏得最深的那幅名画",
+        "body": """以前看周杰伦MV
+我只会觉得画面很贵
+
+但这次重新看
+我突然发现
+最狠的不是滤镜
+也不是布景
+
+而是那些被偷偷塞进去的名画逻辑
+
+尤其有几张画面
+我第一眼就想到克里姆特
+
+那种金色装饰感
+人物像被花纹包围
+画面很满
+却一点都不乱
+
+很多人会把这种感觉叫“高级”
+但所谓高级感
+很多时候并不神秘
+
+它只是借用了名画早就验证过的东西
+构图、色彩、装饰密度
+还有那种一眼就让人停下来的视觉秩序
+
+所以你以为自己在看周杰伦MV
+其实也在看一场名画彩蛋局
+
+我把最像的几张放在后面了
+你们觉得第几张最明显？
+如果你们愿意
+我可以继续做这个系列：把MV、广告、电影海报里藏着的名画一个个扒出来。""",
+        "hashtags": "#周杰伦 #周杰伦MV #名画彩蛋 #克里姆特 #油画 #艺术灵感 #审美提升 #小红书图文 #AI绘画 #当代视觉",
     },
 ]
 
 
 def _get_weekday_package_index(target_date: datetime.datetime) -> int:
-    """根据日期返回默认内容包索引。今天固定推送破次元壁爆款系列。"""
-    weekday = target_date.weekday()
-
-    if weekday == 4:
-        return 14  # 周五(今天)→赵本山与范伟破次元壁爆款
-
-    weekday_map = {
-        0: 12,  # 周一→Cy Twombly（反差+金钱+争议）
-        1: 6,   # 周二→Flora（90后画家一幅画2000万，延续天价路线）
-        2: 8,   # 周三→AI vs Hockney对比（话题性冲评论）
-        3: 14,  # 周四→赵本山与范伟破次元壁爆款
-        5: 5,   # 周六→光影解析（周末深度长文）
-        6: 7,   # 周日→莫兰迪AI油画合集（视觉治愈）
-    }
-    return weekday_map.get(weekday, 14)
+    """根据日期返回默认内容包索引。支持对特定日期做显式内容覆盖。"""
+    return _get_package_candidate_indices(target_date)[0]
 
 
 def get_today_package() -> dict:
@@ -1170,7 +1762,7 @@ def get_today_package() -> dict:
             package["date"] = rec["date"]
             package["weekday"] = rec["weekday"]
             package["smart_rec"] = rec
-            return package
+            return _attach_data_driven_context(package)
 
     # 1. 如果今天有节日热点，优先返回节日内容
     if rec["priority"] == "holiday" and rec.get("event"):
@@ -1191,8 +1783,7 @@ def get_today_package() -> dict:
         }
     else:
         # 2. 按星期匹配最合适的内容包
-        idx = _get_weekday_package_index(datetime.datetime.now())
-        package = DAILY_PACKAGES[idx].copy()
+        package = _pick_unpublished_package(datetime.datetime.now())
         package["time"] = rec["recommended_time"]
         package["is_holiday"] = False
 
@@ -1200,7 +1791,7 @@ def get_today_package() -> dict:
     package["weekday"] = rec["weekday"]
     package["smart_rec"] = rec
 
-    return package
+    return _attach_data_driven_context(package)
 
 
 def get_weekly_packages() -> list:
@@ -1229,12 +1820,12 @@ def get_weekly_packages() -> list:
                 "is_holiday": True,
             }
         else:
-            idx = _get_weekday_package_index(date)
+            package = _pick_unpublished_package(date)
             pkg = {
                 "date": date.strftime("%m月%d日"),
                 "weekday": day_name,
-                "type": DAILY_PACKAGES[idx]["type"],
-                "theme": DAILY_PACKAGES[idx]["theme"],
+                "type": package["type"],
+                "theme": package["theme"],
                 "time": strategy["best_time"],
                 "is_today": (i == 0),
                 "is_holiday": False,

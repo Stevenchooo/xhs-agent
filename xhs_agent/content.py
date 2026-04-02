@@ -1,4 +1,4 @@
-"""小红书运营Agent - AI内容生成器（AI油画·当代艺术 专属版）
+"""小红书运营Agent - AI内容生成器（名画故事·油画审美 专属版）
 工作流：Agent出Prompt → 用户执行生成 → 用户反馈结果 → Agent出配套文案
 """
 
@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from anthropic import Anthropic
 
 from . import config as runtime_config
-from .config import CONTENT_TYPES
+from .config import ACCOUNT_DESC, ACCOUNT_NICHE, AUDIENCE_PERSONA, CONTENT_TYPES
 
 
 def _extract_text(response) -> str:
@@ -92,30 +92,37 @@ def _get_model() -> str:
     return runtime_config.get_ai_runtime_config().get("model", "claude-sonnet-4-6")
 
 
-# 兼容现有函数体，避免批量改动所有 `model=...` 调用点。
-OPENAI_MODEL = _get_model()
+def _build_system_prompt() -> str:
+    """根据当前账号定位和受众画像动态拼装系统提示词。"""
+    return f"""你是一个资深的小红书艺术博主和内容运营专家，深谙「爆款密码」。你深度了解名画故事、油画审美、AI创意辅助，以及小红书平台的内容风格和算法机制。
 
-
-SYSTEM_PROMPT = """你是一个资深的小红书艺术博主和内容运营专家，深谙「爆款密码」。你深度了解当代油画艺术、AI绘画技术，以及小红书平台的内容风格和算法机制。
+【账号定位】
+- 领域：{ACCOUNT_NICHE}
+- 简介：{ACCOUNT_DESC}
 
 【你的核心受众画像（极度重要）】
-- 👦 性别：男性为主（80%）
-- 💼 年龄/社会阶层：35岁以上熟龄人群（占65%），一二线城市及海外高净值人群
-- 🎯 兴趣偏好：艺术史背后的商业逻辑、为什么这幅画值天价、AI技术前沿、深度知识、投资与财富密码
+- 性别倾向：{AUDIENCE_PERSONA.get('gender', '以审美兴趣用户为主')}
+- 年龄层：{AUDIENCE_PERSONA.get('age', '25-44岁为主')}
+- 地域：{AUDIENCE_PERSONA.get('geography', '一二线城市为主')}
+- 兴趣偏好：{AUDIENCE_PERSONA.get('interests', '名画故事、画家冷知识、油画色彩')}
+- 心理特征：{AUDIENCE_PERSONA.get('psychographics', '')}
 
 【你的专业背景】
-- 精通西方当代油画，熟悉Gerhard Richter、Cy Twombly、Lucian Freud等天价当代画家，深谙艺术史上的商业八卦和反常理的冷知识
-- 擅长用AI工具（Midjourney/SD）生成油画风格作品，并能用理性的技术逻辑解释参数
-- 懂艺术市场，能把「天价拍卖」和「艺术审美」结合起来讲给高净值人群听
+- 精通西方绘画、当代艺术、画家故事与作品拆解，能把复杂艺术内容讲得通俗但不浅薄
+- 擅长把「名画故事」「价格反差」「画家冷知识」「色彩审美」组合成更容易被点开的内容
+- 了解 AI 绘图工具（Midjourney/SD 等）的使用方式，但内容重点仍然是审美与故事表达
 
 【写作风格与爆款要求】
-1. 【强悬念】标题和前3句话必须制造巨大的反差、金钱冲突或悬念（如“画模糊卖3亿”、“黑板上乱涂乱画值4.5亿”）。
-2. 【理性且有深度】目标受众是高净值成熟男性。语气必须专业、理性、有深度、不轻浮。
-3. 【红线警告】绝对禁止使用「绝绝子」、「姐妹们」、「家人们」、「贴贴」等低幼化/过度女性化词汇！改为「朋友们」或直接省略称呼。
-4. 【社交货币】让读者看完觉得“学到了一个装杯的冷知识，原来这画这么贵是有道理的，我要转发给朋友探讨”。
-5. 【排版与情绪】善用emoji增加阅读节奏感（🎨🤫💰🤯📈等），短句为主，段落清晰，信息密度高。
-6. 【互动设计】结尾抛出一个有争议或商业探讨价值的问题（如：你觉得这是天才还是炒作？）。
+1. 【强钩子】标题和前3句话必须制造反差、悬念、价格冲突、认知反转，先让人愿意点开。
+2. 【克制但有信息量】语气专业、自然、有判断，不要空喊高级感，也不要写成教科书。
+3. 【红线警告】绝对禁止使用「绝绝子」「姐妹们」「家人们」「贴贴」等低幼化表达。
+4. 【社交货币】让读者看完觉得“我顺手知道了一个很值钱/很有趣/很能聊的艺术知识，值得转发或收藏。”
+5. 【排版节奏】短句为主，段落清晰，适度使用 emoji 增加节奏，但不要堆砌。
+6. 【互动设计】结尾抛出一个低门槛但有态度的问题，优先引导评论、收藏、关注主页继续看同系列内容。
 """
+
+
+SYSTEM_PROMPT = _build_system_prompt()
 
 PROMPT_EXPERT = """你是一位顶级的AI绘画提示词工程师，尤其擅长生成油画风格的AI作品。
 
@@ -193,7 +200,7 @@ def generate_art_prompt(
     try:
         client = _get_client()
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=_get_model(),
             messages=[
                 {"role": "system", "content": PROMPT_EXPERT},
                 {"role": "user", "content": user_prompt}
@@ -238,7 +245,7 @@ def generate_style_prompt(painter_name: str, tool: str = "Midjourney") -> str:
     try:
         client = _get_client()
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=_get_model(),
             messages=[
                 {"role": "system", "content": PROMPT_EXPERT},
                 {"role": "user", "content": user_prompt}
@@ -279,7 +286,7 @@ Prompt：（完整英文提示词）
     try:
         client = _get_client()
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=_get_model(),
             messages=[
                 {"role": "system", "content": PROMPT_EXPERT},
                 {"role": "user", "content": user_prompt}
@@ -351,7 +358,7 @@ def generate_post_from_result(
     try:
         client = _get_client()
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=_get_model(),
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt}
@@ -408,7 +415,7 @@ def optimize_prompt(original_prompt: str, issue: str) -> str:
     try:
         client = _get_client()
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=_get_model(),
             messages=[
                 {"role": "system", "content": PROMPT_EXPERT},
                 {"role": "user", "content": user_prompt}
@@ -440,7 +447,7 @@ def generate_content(
     hist_ctx = build_historical_context_for_ai()
     hist_block = f"\n\n{hist_ctx}\n请参考以上历史数据：学习表现最好的笔记的写法，避免表现差的笔记的问题。" if hist_ctx else ""
 
-    user_prompt = f"""请为小红书创作一篇「AI油画·当代艺术」领域的笔记，要求如下：
+    user_prompt = f"""请为小红书创作一篇「名画故事·油画审美」领域的笔记，要求如下：
 
 📌 内容分类：{category}
 📌 内容类型：{content_type}
@@ -477,7 +484,7 @@ def generate_content(
     try:
         client = _get_client()
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=_get_model(),
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt}
@@ -506,7 +513,7 @@ def generate_titles(category: str, topic: str, count: int = 5) -> list:
     hist_ctx = build_historical_context_for_ai()
     hist_block = f"\n\n{hist_ctx}\n请参考历史表现最好的标题风格来生成。" if hist_ctx else ""
 
-    user_prompt = f"""请为以下小红书「AI油画·当代艺术」笔记主题生成{count}个吸引人的标题：
+    user_prompt = f"""请为以下小红书「名画故事·油画审美」笔记主题生成{count}个吸引人的标题：
 
 分类：{category}
 主题：{topic}
@@ -524,7 +531,7 @@ def generate_titles(category: str, topic: str, count: int = 5) -> list:
     try:
         client = _get_client()
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=_get_model(),
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt}
@@ -545,7 +552,7 @@ def generate_titles(category: str, topic: str, count: int = 5) -> list:
 
 def generate_hashtags(category: str, topic: str) -> str:
     """生成相关话题标签"""
-    user_prompt = f"""请为以下小红书「AI油画·当代艺术」领域内容推荐话题标签：
+    user_prompt = f"""请为以下小红书「名画故事·油画审美」领域内容推荐话题标签：
 
 分类：{category}
 主题：{topic}
@@ -558,7 +565,7 @@ def generate_hashtags(category: str, topic: str) -> str:
     try:
         client = _get_client()
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=_get_model(),
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt}
@@ -573,7 +580,7 @@ def generate_hashtags(category: str, topic: str) -> str:
 
 def polish_content(original: str) -> str:
     """润色已有的笔记内容"""
-    user_prompt = f"""请帮我润色以下小红书「AI油画·当代艺术」领域的笔记内容：
+    user_prompt = f"""请帮我润色以下小红书「名画故事·油画审美」领域的笔记内容：
 
 原文：
 {original}
@@ -584,7 +591,7 @@ def polish_content(original: str) -> str:
     try:
         client = _get_client()
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=_get_model(),
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt}
@@ -599,7 +606,7 @@ def polish_content(original: str) -> str:
 
 def analyze_and_improve(title: str, content: str) -> str:
     """分析现有内容并给出改进建议"""
-    user_prompt = f"""请分析以下小红书「AI油画·当代艺术」领域的笔记，从专业运营角度给出改进建议：
+    user_prompt = f"""请分析以下小红书「名画故事·油画审美」领域的笔记，从专业运营角度给出改进建议：
 
 标题：{title}
 正文：{content}
@@ -618,7 +625,7 @@ def analyze_and_improve(title: str, content: str) -> str:
     try:
         client = _get_client()
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=_get_model(),
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt}
@@ -672,13 +679,13 @@ def analyze_viral_post(title: str, content: str, metrics_desc: str = "") -> str:
 - 📝 互动话术模板
 - 📝 标签策略建议
 
-【6. 用在我的「AI油画·当代艺术」账号上的具体改编思路】
+【6. 用在我的「名画故事·油画审美」账号上的具体改编思路】
 - 把这篇的爆款逻辑迁移到我的领域，给出3个具体选题"""
 
     try:
         client = _get_client()
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=_get_model(),
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT + "\n你同时是一位精通小红书算法和爆款机制的运营专家。你能从任何一篇爆款笔记中提取出可复用的模板和公式。"},
                 {"role": "user", "content": user_prompt}
@@ -747,7 +754,7 @@ def pre_publish_check(title: str, content: str, cover_desc: str = "", publish_ti
     try:
         client = _get_client()
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=_get_model(),
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT + "\n你是一个严格但有建设性的内容审核专家。你的目标是帮助创作者在发布前把内容打磨到最佳状态。评分要客观，建议要具体可执行。"},
                 {"role": "user", "content": user_prompt}
@@ -789,7 +796,7 @@ def repurpose_content(original_title: str, original_content: str, target_format:
     try:
         client = _get_client()
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=_get_model(),
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT + "\n你精通内容二次创作和跨平台改编。你能将同一份内容素材以不同形式最大化其价值。"},
                 {"role": "user", "content": user_prompt}
@@ -823,9 +830,9 @@ def generate_engagement_comments(post_type: str, post_topic: str, count: int = 5
     try:
         client = _get_client()
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=_get_model(),
             messages=[
-                {"role": "system", "content": "你是一位精通当代艺术、AI绘画和油画的专业人士。你在小红书上以「AI油画·当代艺术」为领域。你的评论要既专业又亲切，让人一看就想关注你。"},
+                {"role": "system", "content": f"你是一位精通当代艺术、AI绘画和油画的专业人士。你在小红书上以「{ACCOUNT_NICHE}」为领域。你的评论要既专业又亲切，让人一看就想关注你。"},
                 {"role": "user", "content": user_prompt}
             ],
             temperature=0.85,
@@ -836,7 +843,7 @@ def generate_engagement_comments(post_type: str, post_topic: str, count: int = 5
         return f"生成失败: {str(e)}"
 
 
-def analyze_competitor(competitor_info: str, my_account_desc: str = "AI油画·当代艺术") -> str:
+def analyze_competitor(competitor_info: str, my_account_desc: str = ACCOUNT_NICHE) -> str:
     """
     AI分析竞品账号，给出差异化策略
     """
@@ -873,7 +880,7 @@ def analyze_competitor(competitor_info: str, my_account_desc: str = "AI油画·�
     try:
         client = _get_client()
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=_get_model(),
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT + "\n你同时是一位顶级的竞争分析专家，擅长从竞品中发现机会和制定差异化策略。"},
                 {"role": "user", "content": user_prompt}
@@ -904,7 +911,7 @@ def generate_weekly_report(posts_data: list, account_info: dict) -> str:
     user_prompt = f"""请根据以下数据为我的小红书账号生成本周运营周报：
 
 📌 账号：{nickname}（{followers}粉丝）
-📌 领域：AI油画·当代艺术
+📌 领域：名画故事·油画审美
 
 📌 本周笔记数据：
 {posts_summary}
@@ -936,7 +943,7 @@ def generate_weekly_report(posts_data: list, account_info: dict) -> str:
     try:
         client = _get_client()
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=_get_model(),
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT + "\n你同时是一位数据驱动的运营分析师，擅长从数据中发现问题和机会。周报要有数据支撑，建议要具体可执行。"},
                 {"role": "user", "content": user_prompt}
@@ -966,7 +973,7 @@ def generate_morning_briefing(
     import random
 
     followers = account_info.get("followers", 0)
-    nickname = account_info.get("nickname", "AI油画·当代艺术")
+    nickname = account_info.get("nickname", ACCOUNT_NICHE)
     stage = "冷启动期" if followers < 1000 else "成长期" if followers < 10000 else "爆发期" if followers < 100000 else "稳定期"
 
     eng_total = engagement_stats.get("total_actions", 0)
@@ -1204,7 +1211,7 @@ def generate_post_performance_analysis(
     try:
         client = _get_client()
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=_get_model(),
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT + "\n你是一位数据驱动的运营分析师，善于从数据中快速提取关键信息和可执行建议。"},
                 {"role": "user", "content": user_prompt}
@@ -1279,7 +1286,7 @@ def generate_account_diagnosis(
     try:
         client = _get_client()
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=_get_model(),
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT + "\n你是一位资深的社交媒体运营诊断师。你的诊断报告要像医生的体检报告一样：精准、有数据支撑、有具体的治疗方案。不说空话，每条建议都必须可执行。"},
                 {"role": "user", "content": user_prompt}
@@ -1304,12 +1311,12 @@ def generate_hot_topic_package(
 
 🔥 热点描述：{topic_desc}
 ⏰ 紧急程度：{urgency}
-🎨 账号定位：AI油画·当代艺术
+🎨 账号定位：名画故事·油画审美
 
 请生成以下全套内容：
 
 【🎯 热点切入角度】
-（如何把这个热点和「AI油画·当代艺术」领域结合？给出最佳切入角度）
+（如何把这个热点和「名画故事·油画审美」领域结合？给出最佳切入角度）
 
 【📌 标题（3个选择）】
 （3个不同风格的标题，标注推荐度）
@@ -1335,7 +1342,7 @@ def generate_hot_topic_package(
     try:
         client = _get_client()
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=_get_model(),
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT + "\n" + PROMPT_EXPERT + "\n你同时是一位反应极快的热点运营专家。你能在最短时间内把任何热点和艺术领域结合，产出高质量的蹭热点内容。"},
                 {"role": "user", "content": user_prompt}
@@ -1362,7 +1369,7 @@ def generate_engagement_batch(
 
 📌 互动场景：{scenario}
 📌 目标笔记的关键词领域：{keywords_str}
-📌 我的账号定位：AI油画·当代艺术
+📌 我的账号定位：名画故事·油画审美
 
 要求：
 1. 每条评论80-150字，有实质内容，不是水评论
@@ -1381,7 +1388,7 @@ def generate_engagement_batch(
     try:
         client = _get_client()
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=_get_model(),
             messages=[
                 {"role": "system", "content": "你是一位精通当代艺术和AI绘画的专业人士。你在小红书评论区的身份是一个懂行、有趣、热心分享的艺术爱好者。每条评论都要像真人在自然地分享观点，同时巧妙展示你的专业度。"},
                 {"role": "user", "content": user_prompt}
@@ -1400,7 +1407,7 @@ def generate_reply_suggestions(comments: str) -> str:
     """
     user_prompt = f"""我的小红书笔记收到了以下评论，请帮我生成高质量的回复：
 
-📌 账号定位：AI油画·当代艺术
+📌 账号定位：名画故事·油画审美
 📌 收到的评论：
 {comments}
 
@@ -1417,7 +1424,7 @@ def generate_reply_suggestions(comments: str) -> str:
     try:
         client = _get_client()
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=_get_model(),
             messages=[
                 {"role": "system", "content": "你是一位有温度、有专业度的小红书艺术博主。回复评论时要真诚、有料、能引发二次互动。"},
                 {"role": "user", "content": user_prompt}
@@ -1518,7 +1525,7 @@ Prompt 3（备选·更暗调戏剧感）：
     try:
         client = _get_client()
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=_get_model(),
             messages=[
                 {"role": "system", "content": PROMPT_EXPERT + "\n\n你同时是一位精通小红书封面设计和CTR优化的视觉营销专家。你深知：封面CTR≥8%才能突破初始流量池（200-500曝光→5000+曝光）。你的封面Prompt要针对小红书信息流缩略图场景优化：高饱和度、视觉焦点明确、底部留文字空间。"},
                 {"role": "user", "content": user_prompt}
@@ -1601,7 +1608,7 @@ def generate_compliance_check(title: str, content: str, hashtags: str = "", is_a
     try:
         client = _get_client()
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=_get_model(),
             messages=[
                 {"role": "system", "content": "你是一位精通小红书2025-2026年最新平台规则的合规审核专家。你对关键词堆砌、AI内容标注、绝对化用语、商业导流等违规行为有深入了解。你的检查要严格但有建设性，不仅指出问题还要给出可直接使用的修改版本。同时你也精通小红书SEO，能帮助优化搜索关键词。"},
                 {"role": "user", "content": user_prompt}
@@ -1650,7 +1657,7 @@ def generate_funnel_diagnosis(
     user_prompt = f"""请对以下小红书账号的「后链路漏斗数据」进行深度诊断，给出系统性优化方案：
 
 📌 账号：{nickname}（{followers}粉丝）
-📌 领域：AI油画·当代艺术
+📌 领域：名画故事·油画审美
 
 📊 各环节转化率：
 {stages_str}
@@ -1691,7 +1698,7 @@ def generate_funnel_diagnosis(
     try:
         client = _get_client()
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=_get_model(),
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT + "\n你同时是一位资深的小红书增长黑客和数据分析师。你精通用户行为漏斗分析，能从转化率数据中精准定位问题并给出可量化的优化方案。每条建议必须具体到可执行的步骤，不说空话。"},
                 {"role": "user", "content": user_prompt}

@@ -9,50 +9,49 @@ from .config import DATA_DIR
 
 REVIEW_FILE = os.path.join(DATA_DIR, "reviews.json")
 
-# ==================== 阶段目标（基于第1周真实数据更新） ====================
-# 第1周数据：曝光386 观看28 点赞7(25%) 收藏2(7.1%) 评论1(3.6%) 封面CTR6.3% 涨粉+2 主页访客4→关注2(50%)
-# 结论：互动率全部超标（质量OK）但曝光量极低（量不够）
+# ==================== 阶段目标（基于当前账号近一周数据更新） ====================
+# 最新已知状态：主页约35粉，最近9篇笔记中已有2条显著高于均值。
+# 当前重点：稳住「名画反差故事」爆款方向，同时提升整体发布稳定性与主页承接。
 PHASE_TARGETS = [
     {
         "phase": "Phase 1·冲量验证（当前阶段）",
         "duration": "本周起的2周",
         "date_range": "现在 → +14天",
-        "content_target": "发满10篇笔记（目前约2篇，还差8篇）",
+        "content_target": "累计发满15篇笔记，形成稳定周更节奏",
         "targets": {
-            "total_posts": 10,
-            "avg_views": 100,
-            "avg_likes": 8,
-            "avg_saves": 4,
+            "total_posts": 15,
+            "avg_views": 500,
+            "avg_likes": 18,
+            "avg_saves": 8,
             "followers_gain": 30,
-            "best_post_views": 500,
+            "best_post_views": 3000,
         },
-        "focus": "互动率已经很好不用改内容方向，纯粹加发布量+加评论区引流。目标：让算法看到你是活跃创作者",
+        "focus": "继续主打「名画反差故事 + 画家价格/技法解释」，同时提高主页承接和稳定更新，让爆款不再只靠单条拉动。",
         "content_mix": [
-            "视觉反转型 ×2（放大AI油画10倍，对标#油画Top1，冲高流量）",
-            "画家合集/清单 ×3（收藏率最高的类型，且你的收藏率7.1%已验证有效）",
-            "AI教程/提示词 ×2（已验证有效：封面CTR6.3%+25%点赞率）",
-            "节日热点 ×1（妇女节女画家，蹭节日流量）",
-            "AI vs 原作对比 ×2（制造评论区讨论，提升评论率）",
+            "名画反差故事 ×4（天价、反直觉、画家冷知识）",
+            "画家故事/人物专题 ×3（持续做系列感）",
+            "色彩/审美向内容 ×2（稳收藏和主页氛围）",
+            "实验内容 ×1（跨界或破次元壁）",
         ],
     },
     {
         "phase": "Phase 2·找到爆款公式",
         "duration": "第3-4周",
         "date_range": "+14天 → +28天",
-        "content_target": "再发14篇（累计24篇）",
+        "content_target": "再发9篇（累计24篇）",
         "targets": {
             "total_posts": 24,
-            "avg_views": 500,
+            "avg_views": 800,
             "avg_likes": 25,
-            "avg_saves": 15,
-            "followers_gain": 200,
-            "best_post_views": 3000,
+            "avg_saves": 12,
+            "followers_gain": 80,
+            "best_post_views": 6000,
         },
-        "focus": "Phase1里数据最好的2种类型，占比提到60%。开始评论区引流",
+        "focus": "把数据最好的2种选题固定成栏目，占比提到60%，同步优化封面模板和评论区互动设计。",
         "content_mix": [
-            "数据最好的类型 ×8（主攻方向）",
+            "数据最好的类型 ×5（主攻方向）",
             "第二好的类型 ×3",
-            "实验新方向 ×2",
+            "实验新方向 ×1",
             "合集/盘点 ×1（冲收藏）",
         ],
     },
@@ -63,13 +62,13 @@ PHASE_TARGETS = [
         "content_target": "每周5-7篇",
         "targets": {
             "total_posts": 50,
-            "avg_views": 1000,
+            "avg_views": 1200,
             "avg_likes": 50,
-            "avg_saves": 30,
-            "followers_gain": 500,
+            "avg_saves": 25,
+            "followers_gain": 200,
             "best_post_views": 10000,
         },
-        "focus": "固定栏目+视频尝试+粉丝群建设",
+        "focus": "固定栏目 + 视频尝试 + 主页转粉优化，把单爆款转成连续增长。",
         "content_mix": [
             "固定栏目内容 ×3/周",
             "视频内容 ×1/周",
@@ -86,11 +85,11 @@ PHASE_TARGETS = [
             "total_posts": 80,
             "avg_views": 2000,
             "avg_likes": 100,
-            "avg_saves": 60,
+            "avg_saves": 40,
             "followers_gain": 1000,
             "best_post_views": 50000,
         },
-        "focus": "冲击1000粉开通蒲公英，内容系列化，个人风格成型",
+        "focus": "冲击1000粉，完成内容系列化和首页品牌感建设，形成稳定转粉闭环。",
         "content_mix": [
             "2个固定系列栏目",
             "每周1个视频",
@@ -105,8 +104,12 @@ def save_review(data: dict):
     os.makedirs(DATA_DIR, exist_ok=True)
     reviews = []
     if os.path.exists(REVIEW_FILE):
-        with open(REVIEW_FILE, "r", encoding="utf-8") as f:
-            reviews = json.load(f)
+        try:
+            with open(REVIEW_FILE, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+            reviews = loaded if isinstance(loaded, list) else []
+        except (json.JSONDecodeError, OSError, ValueError):
+            reviews = []
 
     data["review_date"] = datetime.datetime.now().isoformat()
     data["review_id"] = len(reviews) + 1
@@ -120,8 +123,12 @@ def save_review(data: dict):
 def get_all_reviews() -> list:
     """获取所有复盘记录"""
     if os.path.exists(REVIEW_FILE):
-        with open(REVIEW_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+        try:
+            with open(REVIEW_FILE, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+            return loaded if isinstance(loaded, list) else []
+        except (json.JSONDecodeError, OSError, ValueError):
+            return []
     return []
 
 
@@ -139,7 +146,7 @@ def get_current_phase(total_posts: int, followers: int) -> dict:
 
 def evaluate_performance(data: dict) -> dict:
     """评估当前数据表现，给出调整建议"""
-    phase = get_current_phase(data.get("total_posts", 0), data.get("followers", 9))
+    phase = get_current_phase(data.get("total_posts", 0), data.get("followers", 0))
     targets = phase["targets"]
 
     results = {
@@ -208,7 +215,7 @@ def evaluate_performance(data: dict) -> dict:
         elif short == "涨粉":
             results["adjustments"].extend([
                 "🔴 涨粉慢 → 每天在相关话题下留5条有深度的评论引流",
-                "🔴 在每篇笔记结尾加「喜欢当代艺术的话，关注我不迷路🎨」",
+                "🔴 在每篇笔记结尾加一句稳定关注引导，例如「想继续看名画故事和油画审美内容，可以点个关注」",
                 "🔴 主页简介是否清晰表达了你是做什么的？访客3秒内要能判断要不要关注",
             ])
 
@@ -229,7 +236,7 @@ def evaluate_performance(data: dict) -> dict:
         results["next_actions"] = [
             f"📌 继续发，还差{10 - total_posts}篇到Phase 1目标",
             "📌 回头看已发的笔记，哪篇数据最好？下一篇发同类型的",
-            "📌 每天在「当代艺术」「油画」话题下留3-5条有内容的评论",
+            "📌 每天在「名画」「油画」「画家故事」相关话题下留3-5条有内容的评论",
         ]
     else:
         best_type = data.get("best_type", "未知")

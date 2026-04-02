@@ -1,6 +1,6 @@
 """
-🎨 小红书运营Agent - AI油画·当代艺术 智能运营助手
-AI油画创作 × 海外当代画家分享 × 智能内容运营
+🎨 小红书运营Agent - 名画故事·油画审美 智能运营助手
+名画故事拆解 × 油画审美分享 × 智能内容运营
 """
 
 import streamlit as st
@@ -68,11 +68,13 @@ from xhs_agent.tracker import (
     calculate_algorithm_score, analyze_traffic_pool,
     extract_historical_insights, get_dynamic_benchmarks,
     get_best_performing_posts,
+    get_latest_operations_snapshot,
+    get_adaptive_tool_profile,
 )
 
 # ==================== 页面配置 ====================
 st.set_page_config(
-    page_title="🎨 AI油画·当代艺术 运营Agent",
+    page_title="🎨 名画故事·油画审美 运营Agent",
     page_icon="🎨",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -709,7 +711,7 @@ def render_ai_mode_notice(current_page: str):
 # ==================== 侧边栏 ====================
 def render_sidebar():
     with st.sidebar:
-        st.markdown("## 🎨 AI油画·当代艺术")
+        st.markdown("## 🎨 名画故事·油画审美")
         st.markdown(f"<small style='color:#888'>{ACCOUNT_DESC}</small>", unsafe_allow_html=True)
         st.markdown("---")
 
@@ -789,6 +791,10 @@ def render_sidebar():
             st.markdown(f"**🎨 账号：** {account.get('nickname', '未设置')}")
             st.markdown(f"**🖼️ 领域：** {account.get('category', ACCOUNT_NICHE)}")
             st.markdown(f"**👥 粉丝：** {account.get('followers', 0):,}")
+            adaptive = get_adaptive_tool_profile()
+            primary_type = (adaptive.get("content_focus") or {}).get("primary_type")
+            if primary_type:
+                st.caption(f"本周主推：{primary_type}")
         else:
             st.info("请先在设置中配置账号信息")
 
@@ -800,7 +806,7 @@ def render_sidebar():
                 go_to_page("⚙️ 设置")
 
         st.markdown("---")
-        st.caption("🎨 AI油画 × 当代艺术 运营助手")
+        st.caption("🎨 名画故事 × 油画审美 运营助手")
         st.caption(f"📅 {datetime.datetime.now().strftime('%Y年%m月%d日')}")
 
         return page
@@ -846,8 +852,63 @@ def render_daily():
         st.markdown(f"""<div class="plan-card">📊 <strong>排期逻辑：</strong>{rec['reason']}</div>""", unsafe_allow_html=True)
 
     # 数据驱动排期说明
+    if pkg.get("weekly_update_note"):
+        st.markdown(f"""<div class="plan-card"><strong>🗓️ 本周自动更新：</strong>{pkg['weekly_update_note']}</div>""", unsafe_allow_html=True)
+
     if pkg.get("data_driven_note"):
         st.markdown(f"""<div class="tip-card" style="border-left-color:#4CAF50">{pkg['data_driven_note']}</div>""", unsafe_allow_html=True)
+
+    latest_ops = get_latest_operations_snapshot()
+    if latest_ops:
+        metrics = latest_ops.get("metrics", {})
+        period = latest_ops.get("period", {})
+        sources = latest_ops.get("traffic_sources") or []
+        source_parts = [f"{item.get('name', '')} {item.get('percent', 0)}%" for item in sources[:4]]
+        time_info = latest_ops.get("viewer_time") or {}
+        summary_parts = []
+        if period.get("start") and period.get("end"):
+            summary_parts.append(f"统计周期 {period['start']} 至 {period['end']}")
+        if metrics.get("views"):
+            summary_parts.append(f"观看总数 {int(metrics['views']):,}")
+        if metrics.get("viewer_followers"):
+            summary_parts.append(f"观看粉丝 {int(metrics['viewer_followers']):,}")
+        if metrics.get("avg_watch_seconds"):
+            summary_parts.append(f"平均观看时长 {int(metrics['avg_watch_seconds'])} 秒")
+        if metrics.get("conversion_rate") is not None:
+            summary_parts.append(f"转化率 {metrics.get('conversion_rate', 0)}%")
+        if source_parts:
+            summary_parts.append(f"来源结构 {' / '.join(source_parts)}")
+        if time_info.get("peak_window"):
+            peak_label = time_info["peak_window"]
+            if time_info.get("peak_hour_label"):
+                peak_label = f"{peak_label}（{time_info['peak_hour_label']}）"
+            summary_parts.append(f"流量高峰 {peak_label}")
+
+        st.markdown(
+            f"""<div class="plan-card"><strong>📈 最新运营总结：</strong>{'；'.join(summary_parts)}。</div>""",
+            unsafe_allow_html=True,
+        )
+
+    if pkg.get("tool_focus"):
+        st.markdown("### 🛠️ 今日工具优先级")
+        for t in pkg["tool_focus"]:
+            name = t.get("name", "")
+            reason = t.get("reason", "")
+            action = t.get("action", "")
+            st.markdown(f"**{name}**")
+            st.markdown(f"- **原因：** {reason}")
+            st.markdown(f"- **行动：** {action}")
+            st.markdown("")
+
+    if pkg.get("execution_focus"):
+        st.markdown("### 📌 今日执行重点")
+        for i, line in enumerate(pkg["execution_focus"], 1):
+            st.markdown(f"{i}. {line}")
+
+    if pkg.get("weekly_actions"):
+        st.markdown("### 🗓️ 本周工具自动调整")
+        for line in pkg["weekly_actions"][:4]:
+            st.markdown(f"- {line}")
 
     st.markdown("---")
 
@@ -930,24 +991,29 @@ def render_daily():
 def render_review():
     st.markdown("## 📊 数据复盘·策略调整")
     st.markdown("_把创作者中心的数据填进来，我告诉你哪里要调整_")
+    account = get_account_info()
+    stats = get_overall_stats()
+    adaptive = get_adaptive_tool_profile()
 
     tab_input, tab_plan, tab_history = st.tabs(["📊 录入数据", "🗺️ 阶段目标", "📋 历史复盘"])
 
     with tab_input:
         st.markdown("### 📊 录入本周创作者中心数据")
         st.markdown("_每周日录入一次，对比目标，调整下周内容_")
+        if adaptive.get("weekly_update_note"):
+            st.markdown(f"""<div class="plan-card">{adaptive['weekly_update_note']}</div>""", unsafe_allow_html=True)
 
         col1, col2 = st.columns(2)
         with col1:
             r_date = st.date_input("📅 统计截止日期", key="r_date")
-            r_posts = st.number_input("📝 累计已发笔记数", min_value=0, value=0, key="r_posts")
-            r_followers = st.number_input("👥 当前粉丝数", min_value=0, value=9, key="r_followers")
+            r_posts = st.number_input("📝 累计已发笔记数", min_value=0, value=stats.get("total_posts", 0), key="r_posts")
+            r_followers = st.number_input("👥 当前粉丝数", min_value=0, value=account.get("followers", 0), key="r_followers")
             r_followers_gain = st.number_input("📈 本周新增粉丝", min_value=0, value=0, key="r_gain")
         with col2:
-            r_views = st.number_input("👀 本周平均浏览量/篇", min_value=0, value=0, key="r_views")
-            r_likes = st.number_input("❤️ 本周平均点赞/篇", min_value=0, value=0, key="r_likes")
-            r_saves = st.number_input("⭐ 本周平均收藏/篇", min_value=0, value=0, key="r_saves")
-            r_comments = st.number_input("💬 本周平均评论/篇", min_value=0, value=0, key="r_comments")
+            r_views = st.number_input("👀 本周平均浏览量/篇", min_value=0, value=stats.get("avg_views", 0), key="r_views")
+            r_likes = st.number_input("❤️ 本周平均点赞/篇", min_value=0, value=stats.get("avg_likes", 0), key="r_likes")
+            r_saves = st.number_input("⭐ 本周平均收藏/篇", min_value=0, value=stats.get("avg_saves", 0), key="r_saves")
+            r_comments = st.number_input("💬 本周平均评论/篇", min_value=0, value=stats.get("avg_comments", 0), key="r_comments")
 
         r_best = st.text_input("🔥 本周数据最好的笔记标题", key="r_best",
                                placeholder="写一下哪篇数据最好")
@@ -1004,11 +1070,11 @@ def render_review():
 
     with tab_plan:
         st.markdown("### 🗺️ 12周成长计划")
-        st.markdown("_从9粉到1000粉的4个阶段，每个阶段的目标和内容配比_")
+        st.markdown("_从当前阶段走到1000粉的4个阶段，每个阶段的目标和内容配比_")
 
-        account = get_account_info()
-        current_followers = account.get("followers", 9) if account else 9
-        current_phase = get_current_phase(0, current_followers)
+        current_followers = account.get("followers", 0) if account else 0
+        current_posts = get_overall_stats().get("total_posts", 0)
+        current_phase = get_current_phase(current_posts, current_followers)
 
         for phase in PHASE_TARGETS:
             is_current = phase["phase"] == current_phase["phase"]
@@ -1062,14 +1128,15 @@ def render_review():
 
 # ==================== 页面：运营仪表盘 ====================
 def render_dashboard():
-    st.markdown("""
+    st.markdown(f"""
     <div class="main-header">
-        <h1>🎨 AI油画·当代艺术 运营Agent</h1>
-        <p>用AI探索油画的无限可能 · 分享全球当代艺术 · 让涨粉变得优雅</p>
+        <h1>🎨 {ACCOUNT_NICHE} 运营Agent</h1>
+        <p>{ACCOUNT_DESC}</p>
     </div>
     """, unsafe_allow_html=True)
 
     account = get_account_info()
+    adaptive = get_adaptive_tool_profile()
     followers = account.get("followers", 0) if account else 0
     stage = get_current_stage(followers)
 
@@ -1111,12 +1178,11 @@ def render_dashboard():
 
     st.markdown("---")
 
-    # 核心受众画像 (基于 3/10 爆款数据)
+    # 核心受众画像
     st.markdown("### 🎯 核心受众画像")
-    st.markdown("""
+    st.markdown(f"""
     <div class="tip-card" style="border-left-color:#e94560;">
-        <strong>⚠️ 爆款数据揭秘：</strong> 你的受众不是年轻女生，而是<strong>高净值熟龄男性</strong>！
-        内容必须抛弃低幼化表达，转向<strong>「艺术投资」「财富密码」「技术前沿」</strong>等有深度的讨论。
+        <strong>📌 当前账号信号：</strong>{adaptive.get('dynamic_audience_hint', '近期更容易跑出来的是名画反差故事、画家冷知识、价格/技法解释这类内容。')}
     </div>
     """, unsafe_allow_html=True)
 
@@ -1132,6 +1198,11 @@ def render_dashboard():
 
     with st.expander("📖 查看详细人群洞察与写作建议", expanded=False):
         st.markdown(f"**心理特征：** {AUDIENCE_PERSONA['psychographics']}")
+
+    if adaptive.get("weekly_actions"):
+        st.markdown("### 🗓️ 本周系统自动调整")
+        for line in adaptive["weekly_actions"][:4]:
+            st.markdown(f"- {line}")
 
     st.markdown("---")
 
@@ -1167,7 +1238,7 @@ def render_dashboard():
 # ==================== 页面：选题灵感库 ====================
 def render_topic_ideas():
     st.markdown("## 💡 选题灵感库")
-    st.markdown("为你的「AI油画·当代艺术」账号精选的选题灵感，可在本地环境中一键生成内容。")
+    st.markdown(f"为你的「{ACCOUNT_NICHE}」账号精选的选题灵感，可在本地环境中一键生成内容。")
 
     for topic_category, topics in TOPIC_IDEAS.items():
         st.markdown(f"### 🎨 {topic_category}")
@@ -1696,7 +1767,7 @@ def render_exif_tool():
 # ==================== 页面：发布计划 ====================
 def render_schedule():
     st.markdown("## 📅 一周发布计划")
-    st.markdown("为你的AI油画·当代艺术账号量身定制的内容日历")
+    st.markdown(f"为你的「{ACCOUNT_NICHE}」账号量身定制的内容日历")
 
     account = get_account_info()
     category = account.get("category", ACCOUNT_NICHE) if account else ACCOUNT_NICHE
@@ -3135,10 +3206,10 @@ def render_account_health():
     score_color = "#4CAF50" if score >= 80 else "#FF9800" if score >= 60 else "#f44336" if score >= 40 else "#9E9E9E"
 
     st.markdown(f"""
-    <div style="text-align:center; padding:2rem; background:linear-gradient(135deg, #f8f5ff 0%, #fff 100%); border-radius:16px; border:2px solid {score_color}; margin-bottom:1.5rem;">
+    <div style="text-align:center; padding:2rem; background:linear-gradient(135deg, rgba(10,22,40,0.95) 0%, rgba(6,13,20,0.98) 100%); border-radius:16px; border:2px solid {score_color}; margin-bottom:1.5rem; box-shadow:0 0 24px rgba(0,0,0,0.25);">
         <h1 style="font-size:4rem; color:{score_color}; margin:0;">{score}</h1>
-        <p style="font-size:1.5rem; color:#333; margin:0.5rem 0;">{level}</p>
-        <p style="color:#888; font-size:0.9rem;">账号综合健康度</p>
+        <p style="font-size:1.5rem; color:#e2e8f0; margin:0.5rem 0;">{level}</p>
+        <p style="color:#8fa3bb; font-size:0.9rem;">账号综合健康度</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -4157,7 +4228,7 @@ def render_hot_topic():
                 if days <= 1:
                     if st.button(f"⚡ 立即为「{event['name']}」生成内容",
                                   key=f"hot_event_{event['name']}", use_container_width=True):
-                        st.session_state["hot_desc"] = f"今天是{event['name']}，想从「{event.get('art_angle', '')}」角度出一篇和AI油画·当代艺术结合的笔记"
+                        st.session_state["hot_desc"] = f"今天是{event['name']}，想从「{event.get('art_angle', '')}」角度出一篇和{ACCOUNT_NICHE}结合的笔记"
                         st.info("请切换到「⚡ 快速出内容」Tab，热点描述已自动填入")
         else:
             st.info("未来14天没有预设的热点节日。但你可以自己发现热点并在「⚡ 快速出内容」中使用！")
@@ -4178,7 +4249,7 @@ def render_settings():
         category = st.selectbox(
             "内容领域",
             CONTENT_CATEGORIES,
-            index=CONTENT_CATEGORIES.index(account.get("category", "AI油画创作"))
+            index=CONTENT_CATEGORIES.index(account.get("category", "画家故事"))
             if account.get("category") in CONTENT_CATEGORIES else 0,
             key="s_cat"
         )
@@ -4189,12 +4260,12 @@ def render_settings():
             key="s_followers"
         )
         bio = st.text_area("账号简介", value=account.get("bio", ""),
-                           placeholder="例如：🎨 AI油画探索者 | 分享海外当代画家的精彩世界 | 用科技与艺术碰撞美的火花",
+                           placeholder="例如：把名画讲成故事，把油画做成可复制的审美体验",
                            key="s_bio")
         target = st.text_input(
             "运营目标",
             value=account.get("target", ""),
-            placeholder="例如：3个月涨粉5000，成为AI油画领域头部账号",
+            placeholder="例如：3个月涨粉1000，做出稳定的名画故事栏目",
             key="s_target"
         )
 
@@ -4228,16 +4299,17 @@ def render_settings():
         new_model = st.text_input("模型名称", value=cfg.CLAUDE_MODEL, key="s_model")
 
         if st.button("💾 保存API配置", type="primary", key="s_api_save"):
-            import xhs_agent.content as content_mod
-
             cfg.set_ai_runtime_config(new_key, new_url, new_model)
-            content_mod.OPENAI_MODEL = cfg.CLAUDE_MODEL
             st.success("✅ Claude API 配置已保存（本次会话有效）！")
             st.rerun()
 
 
 # ==================== 主程序 ====================
 def main():
+    try:
+        get_adaptive_tool_profile()
+    except Exception:
+        pass
     page = render_sidebar()
     render_ai_mode_notice(page)
 

@@ -36,7 +36,9 @@ venv.bak/
 *.log
 
 # Ignore large/generated data folders if any
+xhs_agent/data/
 xhs_agent/data/废图/
+xhs_agent/data/废图2/
 mc_table_analyzer/output/
 xhs_agent/data/media/
 
