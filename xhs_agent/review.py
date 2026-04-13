@@ -10,8 +10,8 @@ from .config import DATA_DIR
 REVIEW_FILE = os.path.join(DATA_DIR, "reviews.json")
 
 # ==================== 阶段目标（基于当前账号近一周数据更新） ====================
-# 最新已知状态：主页约35粉，最近9篇笔记中已有2条显著高于均值。
-# 当前重点：稳住「名画反差故事」爆款方向，同时提升整体发布稳定性与主页承接。
+# 最新已知状态：最近 7 条笔记里，经典游戏 IP 真人化方向明显跑赢其他题材。
+# 当前重点：稳住「游戏角色来到现实世界 / 真人化」方向，减少低效混发，打透晚间黄金时段。
 PHASE_TARGETS = [
     {
         "phase": "Phase 1·冲量验证（当前阶段）",
@@ -20,18 +20,18 @@ PHASE_TARGETS = [
         "content_target": "累计发满15篇笔记，形成稳定周更节奏",
         "targets": {
             "total_posts": 15,
-            "avg_views": 500,
-            "avg_likes": 18,
-            "avg_saves": 8,
+            "avg_views": 700,
+            "avg_likes": 20,
+            "avg_saves": 6,
             "followers_gain": 30,
             "best_post_views": 3000,
         },
-        "focus": "继续主打「名画反差故事 + 画家价格/技法解释」，同时提高主页承接和稳定更新，让爆款不再只靠单条拉动。",
+        "focus": "继续主打「经典游戏IP真人化 + 童年回忆」方向，同时减少与主赛道无关的实验内容，把 20:00-21:00 档位做透。",
         "content_mix": [
-            "名画反差故事 ×4（天价、反直觉、画家冷知识）",
-            "画家故事/人物专题 ×3（持续做系列感）",
-            "色彩/审美向内容 ×2（稳收藏和主页氛围）",
-            "实验内容 ×1（跨界或破次元壁）",
+            "经典游戏IP真人化 ×4（主力方向）",
+            "角色萌系短视频 ×2（补稳定互动）",
+            "游戏热点快反 ×1（吃热点红利）",
+            "借势实验 ×1（仅在能绑定游戏IP时测试）",
         ],
     },
     {
@@ -41,13 +41,13 @@ PHASE_TARGETS = [
         "content_target": "再发9篇（累计24篇）",
         "targets": {
             "total_posts": 24,
-            "avg_views": 800,
-            "avg_likes": 25,
-            "avg_saves": 12,
+            "avg_views": 1000,
+            "avg_likes": 30,
+            "avg_saves": 8,
             "followers_gain": 80,
             "best_post_views": 6000,
         },
-        "focus": "把数据最好的2种选题固定成栏目，占比提到60%，同步优化封面模板和评论区互动设计。",
+        "focus": "把「游戏IP真人化」和「热点快反」固定成栏目，占比提到 60%，同步优化封面模板和评论区投票设计。",
         "content_mix": [
             "数据最好的类型 ×5（主攻方向）",
             "第二好的类型 ×3",
@@ -62,18 +62,18 @@ PHASE_TARGETS = [
         "content_target": "每周5-7篇",
         "targets": {
             "total_posts": 50,
-            "avg_views": 1200,
+            "avg_views": 1500,
             "avg_likes": 50,
-            "avg_saves": 25,
+            "avg_saves": 12,
             "followers_gain": 200,
             "best_post_views": 10000,
         },
-        "focus": "固定栏目 + 视频尝试 + 主页转粉优化，把单爆款转成连续增长。",
+        "focus": "固定栏目 + 系列连更 + 主页转粉优化，把单条爆款变成连续增长。",
         "content_mix": [
-            "固定栏目内容 ×3/周",
-            "视频内容 ×1/周",
+            "经典游戏IP真人化 ×3/周",
+            "热点快反 ×1/周",
             "合集/盘点 ×1/周",
-            "热点跟进 ×1/周（有热点时）",
+            "制作过程/评论互动 ×1/周",
         ],
     },
     {
@@ -83,16 +83,16 @@ PHASE_TARGETS = [
         "content_target": "保持周更5篇",
         "targets": {
             "total_posts": 80,
-            "avg_views": 2000,
+            "avg_views": 2500,
             "avg_likes": 100,
-            "avg_saves": 40,
+            "avg_saves": 18,
             "followers_gain": 1000,
             "best_post_views": 50000,
         },
-        "focus": "冲击1000粉，完成内容系列化和首页品牌感建设，形成稳定转粉闭环。",
+        "focus": "冲击 1000 粉，完成内容系列化和角色宇宙化，让用户一眼知道你是做游戏IP真人化的。",
         "content_mix": [
             "2个固定系列栏目",
-            "每周1个视频",
+            "每周 1 个热点联动",
             "月度大合集 ×1",
         ],
     },
@@ -117,6 +117,10 @@ def save_review(data: dict):
 
     with open(REVIEW_FILE, "w", encoding="utf-8") as f:
         json.dump(reviews, f, ensure_ascii=False, indent=2)
+
+    from .tracker import sync_latest_review_snapshot
+
+    sync_latest_review_snapshot(data)
     return data["review_id"]
 
 
@@ -202,20 +206,20 @@ def evaluate_performance(data: dict) -> dict:
             ])
         elif short == "点赞":
             results["adjustments"].extend([
-                "🟡 点赞偏低 → 封面图要更有视觉冲击力，画作要选色彩强烈的",
+                "🟡 点赞偏低 → 封面首帧要先出现熟悉角色或强反差画面，不要让用户先理解再决定要不要看",
                 "🟡 在正文结尾加一句有「金句感」的总结，引发情感共鸣",
                 "🟡 尝试加入更多个人感受（不只是信息搬运，要有「我」的声音）",
             ])
         elif short == "收藏":
             results["adjustments"].extend([
-                "🟡 收藏偏低 → 增加干货密度：分享Prompt原文、配色方案、画家清单",
+                "🟡 收藏偏低 → 增加可复用信息：分享Prompt原文、角色清单、下一期选题列表",
                 "🟡 多做合集/清单/教程类内容（收藏率是普通内容的2-3倍）",
                 "🟡 在文末加「先🌟Mark住，下次画画时翻出来看」",
             ])
         elif short == "涨粉":
             results["adjustments"].extend([
                 "🔴 涨粉慢 → 每天在相关话题下留5条有深度的评论引流",
-                "🔴 在每篇笔记结尾加一句稳定关注引导，例如「想继续看名画故事和油画审美内容，可以点个关注」",
+                "🔴 在每篇笔记结尾加一句稳定关注引导，例如「想继续看经典游戏角色真人化内容，可以点个关注」",
                 "🔴 主页简介是否清晰表达了你是做什么的？访客3秒内要能判断要不要关注",
             ])
 
@@ -236,14 +240,14 @@ def evaluate_performance(data: dict) -> dict:
         results["next_actions"] = [
             f"📌 继续发，还差{10 - total_posts}篇到Phase 1目标",
             "📌 回头看已发的笔记，哪篇数据最好？下一篇发同类型的",
-            "📌 每天在「名画」「油画」「画家故事」相关话题下留3-5条有内容的评论",
+            "📌 每天在「马里奥」「任天堂」「游戏角色真人版」「童年回忆」相关话题下留3-5条有内容的评论",
         ]
     else:
         best_type = data.get("best_type", "未知")
         results["next_actions"] = [
             f"📌 你的最佳内容类型是「{best_type}」，下周60%的内容做这个方向",
-            "📌 尝试做一个固定栏目（如「每周二·陌生画派推荐」）",
-            "📌 试一条视频内容（AI创作过程录屏+字幕，3分钟）",
+            "📌 尝试做一个固定栏目（如「如果X来到现实世界」）",
+            "📌 试一条系列化视频内容（同一宇宙多角色连续发 2-3 条）",
         ]
 
     return results

@@ -5,6 +5,9 @@
 """
 
 import datetime
+import logging
+
+_logger = logging.getLogger(__name__)
 import difflib
 import re
 
@@ -20,16 +23,241 @@ def _attach_data_driven_context(package: dict) -> dict:
         package["data_driven_note"] = brief.get("note", "")
         package["tool_focus"] = brief.get("tool_focus") or []
         package["execution_focus"] = brief.get("execution_focus") or []
+        package["follow_conversion_todo"] = brief.get("follow_conversion_todo") or []
+        package["follow_conversion_templates"] = brief.get("follow_conversion_templates") or {}
         package["weekly_update_note"] = adaptive.get("weekly_update_note", "")
         package["weekly_actions"] = adaptive.get("weekly_actions") or []
         package["adaptive_profile"] = adaptive
+        if package.get("tool_focus_override"):
+            package["tool_focus"] = package.get("tool_focus_override") or []
+        if package.get("execution_focus_override"):
+            package["execution_focus"] = package.get("execution_focus_override") or []
+        if package.get("follow_conversion_todo_override"):
+            package["follow_conversion_todo"] = package.get("follow_conversion_todo_override") or []
+        if package.get("follow_conversion_templates_override"):
+            package["follow_conversion_templates"] = package.get("follow_conversion_templates_override") or {}
+        if package.get("data_driven_note_append"):
+            extra_note = str(package.get("data_driven_note_append") or "").strip()
+            base_note = str(package.get("data_driven_note") or "").strip()
+            package["data_driven_note"] = f"{base_note} {extra_note}".strip()
     except Exception:
         package.setdefault("data_driven_note", "数据暂不可用，请先完成笔记追踪后再试。")
         package.setdefault("tool_focus", [])
         package.setdefault("execution_focus", [])
+        package.setdefault("follow_conversion_todo", [])
+        package.setdefault("follow_conversion_templates", {})
         package.setdefault("weekly_update_note", "")
         package.setdefault("weekly_actions", [])
         package.setdefault("adaptive_profile", {})
+    return package
+
+
+def _is_game_ip_mode() -> bool:
+    """根据账号定位与近期开奖断当前是否应优先走游戏IP真人化方向。"""
+    try:
+        from .config import ACCOUNT_NICHE
+        from .tracker import get_account_info, get_adaptive_tool_profile
+
+        account = get_account_info() or {}
+        adaptive = get_adaptive_tool_profile()
+        content_focus = adaptive.get("content_focus") or {}
+        primary_type = content_focus.get("primary_type") or ""
+        text_blob = " ".join(
+            str(item or "")
+            for item in [
+                ACCOUNT_NICHE,
+                account.get("category", ""),
+                account.get("bio", ""),
+                primary_type,
+            ]
+        )
+        if primary_type in {"游戏IP真人化", "角色萌系短视频", "游戏热点快反", "童年回忆盘点"}:
+            return True
+        return any(keyword in text_blob for keyword in ("游戏", "马里奥", "任天堂", "真人化", "yoshi"))
+    except Exception:
+        return False
+
+
+def _apply_recent_ctr_playbook(package: dict) -> dict:
+    """对内容包应用新版CTR策略：封面更短、更直观、更适合缩略图。"""
+    package = package.copy()
+    original_cover = (package.get("cover_text") or "").strip()
+    original_title = (package.get("title") or "").strip()
+    aliases = list(package.get("dedupe_aliases") or [])
+
+    if package.get("cover_text_v2"):
+        package["cover_text"] = (package.get("cover_text_v2") or "").strip()
+    if package.get("title_v2"):
+        package["title"] = (package.get("title_v2") or "").strip()
+
+    current_cover = (package.get("cover_text") or "").strip()
+    current_title = (package.get("title") or "").strip()
+    for legacy in (original_cover, original_title):
+        if legacy and legacy not in aliases and legacy not in {current_cover, current_title}:
+            aliases.append(legacy)
+    if aliases:
+        package["dedupe_aliases"] = aliases
+
+    cover_rule = package.get(
+        "cover_rule_v2",
+        "封面按新策略执行：只保留1个主体，文案6-12字，先打感觉/判断，不做旧的文艺杂志风。",
+    )
+    prompts = []
+    for idx, item in enumerate(package.get("prompts") or []):
+        prompt_item = item.copy()
+        if idx == 0 or "封面" in prompt_item.get("desc", ""):
+            note = (prompt_item.get("note") or "").strip()
+            if cover_rule not in note:
+                prompt_item["note"] = f"{note}；{cover_rule}" if note else cover_rule
+        prompts.append(prompt_item)
+    if prompts:
+        package["prompts"] = prompts
+
+    package.setdefault("cover_strategy", "感觉命名型/结论型")
+    package.setdefault("cover_execution", [
+        "封面只说一个判断",
+        "封面优先单主体、单轮廓、单局部",
+        "缩略图里先看懂对象，再决定要不要点开",
+    ])
+    return package
+
+
+def _apply_realism_prompt_rules(package: dict) -> dict:
+    """对真人化/现实化图片 prompt 追加统一真实感约束。"""
+    realism_types = {"游戏热点真人化", "游戏IP真人化", "角色萌系短视频", "童年回忆盘点"}
+    if package.get("type") not in realism_types:
+        return package
+
+    try:
+        from .config import REALISTIC_IMAGE_PROMPT_RULES
+    except Exception:
+        return package
+
+    suffix = (REALISTIC_IMAGE_PROMPT_RULES.get("suffix") or "").strip()
+    if not suffix:
+        return package
+
+    def add_suffix(prompt_text: str) -> str:
+        if not prompt_text or prompt_text.startswith("（"):
+            return prompt_text
+        lower_prompt = prompt_text.lower()
+        if "end card" in lower_prompt or "interaction question" in lower_prompt:
+            return prompt_text
+        suffix_parts = [part.strip() for part in suffix.split(",") if part.strip()]
+        missing_parts = [part for part in suffix_parts if part.lower() not in lower_prompt]
+        if not missing_parts:
+            return prompt_text
+        base, sep, tail = prompt_text.partition(" --")
+        return f"{base}, {', '.join(missing_parts)}{sep}{tail}"
+
+    package = package.copy()
+    realism_note = "默认先做得像真实电影剧照：材质可信、光影自然、不要塑料感或玩具感。"
+    prompts = []
+    for item in package.get("prompts") or []:
+        prompt_item = item.copy()
+        prompt_item["prompt"] = add_suffix((prompt_item.get("prompt") or "").strip())
+        prompt_text = prompt_item.get("prompt") or ""
+        if prompt_text and not prompt_text.startswith("（") and "end card" not in prompt_text.lower():
+            note = (prompt_item.get("note") or "").strip()
+            if realism_note not in note:
+                prompt_item["note"] = f"{note}；{realism_note}" if note else realism_note
+        prompts.append(prompt_item)
+    if prompts:
+        package["prompts"] = prompts
+    package.setdefault("visual_guardrail", "真人化内容默认先做非常真实，优先像真实拍摄，不像CG手办。")
+    return package
+
+
+def _apply_art_realism_prompt_rules(package: dict) -> dict:
+    """对旧艺术向内容包追加“真实作品质感”约束。"""
+    art_types = {
+        "视觉反转型",
+        "画家介绍 + AI复刻",
+        "现实像油画",
+        "AI油画×生活",
+        "艺术清单合集",
+        "色彩/构图解析",
+        "画家故事",
+        "AI油画合集",
+        "AI vs 真实油画对比",
+        "AI绘画教程",
+        "官方活动·春天AI油画",
+        "画家故事 + AI复刻",
+        "名画破次元壁",
+        "反常理名画脑洞",
+        "风格对撞",
+        "情绪拟像合集",
+        "城市瞬间再造",
+        "画家人格想象",
+        "废稿反转",
+        "群聊共创脑洞",
+        "流行文化×名画彩蛋",
+    }
+    package_type = package.get("type") or ""
+    if package_type not in art_types:
+        return package
+
+    try:
+        from .config import ART_REALISM_PROMPT_RULES
+    except Exception:
+        return package
+
+    suffix = (ART_REALISM_PROMPT_RULES.get("suffix") or "").strip()
+    if not suffix:
+        return package
+
+    def should_skip(prompt_text: str) -> bool:
+        if not prompt_text or prompt_text.startswith("（"):
+            return True
+        lower_prompt = prompt_text.lower()
+        skip_tokens = [
+            "end card",
+            "comparison card",
+            "editorial comparison",
+            "typography area",
+            "caption styling",
+            "room for annotations",
+            "strong readability",
+            "strong central typography area",
+            "collector magazine style",
+        ]
+        return any(token in lower_prompt for token in skip_tokens)
+
+    def add_suffix(prompt_text: str) -> str:
+        if should_skip(prompt_text):
+            return prompt_text
+        lower_prompt = prompt_text.lower()
+        suffix_parts = [part.strip() for part in suffix.split(",") if part.strip()]
+        missing_parts = [part for part in suffix_parts if part.lower() not in lower_prompt]
+        if not missing_parts:
+            return prompt_text
+        base, sep, tail = prompt_text.partition(" --")
+        return f"{base}, {', '.join(missing_parts)}{sep}{tail}"
+
+    package = package.copy()
+    realism_note = "默认先做成像真实作品：表面可触、光线可信、不要廉价数字光泽。"
+    prompts = []
+    for item in package.get("prompts") or []:
+        prompt_item = item.copy()
+        prompt_text = (prompt_item.get("prompt") or "").strip()
+        prompt_item["prompt"] = add_suffix(prompt_text)
+        updated_prompt = prompt_item.get("prompt") or ""
+        if updated_prompt and not should_skip(updated_prompt):
+            note = (prompt_item.get("note") or "").strip()
+            if realism_note not in note:
+                prompt_item["note"] = f"{note}；{realism_note}" if note else realism_note
+        prompts.append(prompt_item)
+    if prompts:
+        package["prompts"] = prompts
+    package.setdefault("visual_guardrail", "艺术向内容默认先做作品质感真实，不做廉价AI插画味。")
+    return package
+
+
+def _apply_default_prompt_rules(package: dict) -> dict:
+    """统一挂载封面CTR规则与不同类型的真实感规则。"""
+    package = _apply_recent_ctr_playbook(package)
+    package = _apply_realism_prompt_rules(package)
+    package = _apply_art_realism_prompt_rules(package)
     return package
 
 
@@ -107,14 +335,6 @@ def _get_package_candidate_indices(target_date: datetime.datetime) -> list:
     weekday = target_date.weekday()
     candidates = []
 
-    date_override_map = {
-        (2026, 3, 17): 14,
-        (2026, 3, 23): 14,
-    }
-    override_idx = date_override_map.get((target_date.year, target_date.month, target_date.day))
-    if override_idx is not None:
-        candidates.append(override_idx)
-
     if weekday == 4:
         candidates.append(14)
 
@@ -161,19 +381,46 @@ def _get_creative_candidate_indices(target_date: datetime.datetime) -> list:
     return preferred
 
 
+def _get_game_candidate_indices(target_date: datetime.datetime) -> list:
+    """按星期返回游戏IP真人化内容池候选顺序。"""
+    weekday = target_date.weekday()
+    weekday_map = {
+        0: [2, 0, 3],
+        1: [1, 2, 0],
+        2: [3, 0, 1],
+        3: [2, 3, 0],
+        4: [0, 2, 1],
+        5: [0, 1, 3],
+        6: [3, 0, 2],
+    }
+    preferred = list(weekday_map.get(weekday, [0, 1, 2]))
+    for idx in range(len(GAME_PACKAGES)):
+        if idx not in preferred:
+            preferred.append(idx)
+    return preferred
+
+
 def _iter_candidate_packages(target_date: datetime.datetime):
     """先产出创意池，再回退到已验证基础池。"""
     seen_topic_ids = set()
 
     for idx in _get_creative_candidate_indices(target_date):
-        package = CREATIVE_PACKAGES[idx].copy()
+        package = _apply_default_prompt_rules(CREATIVE_PACKAGES[idx].copy())
         topic_id = _get_package_topic_id(package)
         if topic_id not in seen_topic_ids:
             seen_topic_ids.add(topic_id)
             yield package
 
+    if _is_game_ip_mode():
+        for idx in _get_game_candidate_indices(target_date):
+            package = _apply_default_prompt_rules(GAME_PACKAGES[idx].copy())
+            topic_id = _get_package_topic_id(package)
+            if topic_id not in seen_topic_ids:
+                seen_topic_ids.add(topic_id)
+                yield package
+
     for idx in _get_package_candidate_indices(target_date):
-        package = DAILY_PACKAGES[idx].copy()
+        package = _apply_default_prompt_rules(DAILY_PACKAGES[idx].copy())
         topic_id = _get_package_topic_id(package)
         if topic_id not in seen_topic_ids:
             seen_topic_ids.add(topic_id)
@@ -193,6 +440,268 @@ def _pick_unpublished_package(target_date: datetime.datetime) -> dict:
 
 
 # ==================== 内容包库（基于数据优化后） ====================
+GAME_PACKAGES = [
+    {
+        "day_label": "Game 1",
+        "type": "游戏热点真人化",
+        "theme": "Switch 2热度下的马里奥角色来到现实",
+        "why": "最近已经验证出「经典游戏IP + 真人化」是最强方向；再叠加 Switch 2 / 马里奥热度，更容易承接公域流量。",
+        "topic_id": "game-switch2-mario-realworld",
+        "prompts": [
+            {
+                "desc": "图1·封面：熟悉角色的真人化主视觉",
+                "prompt": "Ultra detailed live-action reimagining of Mario universe characters, ultra photorealistic cinematic realism, familiar character silhouettes preserved, natural facial anatomy, lifelike skin and fabric texture, physically plausible blockbuster lighting, vivid but grounded color palette, highly recognizable Nintendo-inspired fantasy world, portrait poster composition --ar 3:4 --s 700 --v 6.1",
+                "note": "封面优先单主体，一眼能认出是马里奥宇宙。",
+            },
+            {
+                "desc": "图2-4·多角色展开：公主组/反派组/萌物组",
+                "prompt": "A realistic cinematic reinterpretation of classic Mario characters in the real world, ultra photorealistic detail, detailed costume textures, expressive faces, real-world lens optics, believable material response, playful fantasy realism, nostalgic and premium, each frame centered on one iconic character or a tight duo --ar 3:4 --s 650 --v 6.1",
+                "note": "每张只保留一个主角或一个组合，不要做多人远景。",
+            },
+            {
+                "desc": "图5·互动收束页",
+                "prompt": "Clean vertical end card for Xiaohongshu, playful game-inspired layout, bold typography area, nostalgic but modern, bright Nintendo-like palette, strong readability, room for a comment question --ar 3:4 --s 350 --v 6.1",
+                "note": "互动问题建议：下一期你最想看谁来到现实世界？",
+            },
+        ],
+        "cover_text": "Switch 2真人版",
+        "cover_text_v2": "Switch 2真人版",
+        "title": "Switch 2刚热起来，马里奥新角色来到现实会长这样吗？",
+        "title_v2": "Switch 2刚热起来，马里奥新角色来到现实会长这样吗？",
+        "body": """Switch 2这波刚把马里奥热度又拉起来
+我又没忍住
+
+这次不是单看某一个角色
+而是想看看整个马里奥宇宙
+如果真的来到现实世界
+会是什么感觉
+
+公主组、反派组、萌物组
+每一个都保留了记忆里的样子
+但又多了一层真人世界的真实感
+
+有些角色不是简单的还原
+是真的像从游戏里走出来了一样
+
+你觉得这次谁最像？
+下一期你们最想看谁？""",
+        "hashtags": "#Switch2 #马里奥 #超级马里奥 #任天堂 #游戏角色真人版 #经典IP #童年回忆 #现实版",
+    },
+    {
+        "day_label": "Game 2",
+        "type": "角色萌系短视频",
+        "theme": "耀西来到现实世界",
+        "why": "单角色可爱向内容虽然爆发力不如多角色宇宙，但更适合补稳定互动，也容易做短平快连更。",
+        "topic_id": "game-yoshi-cute-realworld",
+        "prompts": [
+            {
+                "desc": "图1·封面：耀西贴脸特写",
+                "prompt": "Adorable realistic Yoshi-inspired creature in the real world, photorealistic creature design, huge expressive eyes, playful smile, believable skin texture and subtle imperfections, cinematic close-up, colorful but believable fantasy realism, cute and healing mood --ar 3:4 --s 700 --v 6.1",
+                "note": "封面尽量只保留脸或上半身，做可爱暴击。",
+            },
+            {
+                "desc": "图2-3·动作镜头：跑跳/回头/贴脸笑",
+                "prompt": "Cute Yoshi-like character running, turning, or leaning toward the camera in a bright fantasy world, photorealistic creature movement, highly expressive, warm sunlight, realistic shadows and materials, joyful and nostalgic, character-first framing --ar 3:4 --s 650 --v 6.1",
+                "note": "动作比讲道理更重要，短视频要先给情绪。",
+            },
+        ],
+        "cover_text": "Yoshi小可爱",
+        "cover_text_v2": "Yoshi小可爱",
+        "title": "我愿称之为「yoshi小可爱」",
+        "title_v2": "我愿称之为「yoshi小可爱」",
+        "body": """短短十几秒
+像掉进了耀西的小世界
+
+这种不需要太多剧情的快乐
+反而最戳人
+
+从第一眼的熟悉
+到最后那个贴脸笑
+真的很难不被可爱暴击
+
+今天的治愈份额
+就交给耀西了
+
+你们会想继续看这类单角色小短片吗？""",
+        "hashtags": "#耀西 #Yoshi #任天堂 #可爱暴击 #治愈系视频 #萌系角色 #游戏日常 #真人版",
+    },
+    {
+        "day_label": "Game 3",
+        "type": "游戏IP真人化",
+        "theme": "如果马里奥兄弟真的来到现实世界",
+        "why": "这是当前已验证最强结构：熟悉IP + 来到现实世界 + 真人化反差，兼顾点击、互动、收藏和涨粉。",
+        "topic_id": "game-mario-bros-realworld",
+        "prompts": [
+            {
+                "desc": "图1·封面：双角色对照主视觉",
+                "prompt": "Live-action Mario Bros characters brought into the real world, strong recognizable costume silhouette, ultra photorealistic cinematic realism, expressive faces, realistic fabric and leather detail, premium fantasy adventure atmosphere, poster-like composition with one or two iconic characters --ar 3:4 --s 700 --v 6.1",
+                "note": "优先选最熟悉的组合，封面不要超过两个人。",
+            },
+            {
+                "desc": "图2-5·角色扩展页",
+                "prompt": "Realistic reinterpretation of classic Mario universe characters, princess, villain, sidekick, and creature types, movie-grade costume detail, realistic skin and material rendering, nostalgic yet believable, each shot focused on one character or one pair --ar 3:4 --s 650 --v 6.1",
+                "note": "做出角色宇宙感，但每张只讲一个对象。",
+            },
+        ],
+        "cover_text": "马里奥来到现实",
+        "cover_text_v2": "马里奥来到现实",
+        "title": "如果马里奥兄弟真的来到现实世界……",
+        "title_v2": "如果马里奥兄弟真的来到现实世界……",
+        "body": """小时候玩过的马里奥角色
+如果真的出现在现实里
+会不会就是这个样子
+
+从公主到库巴
+再到蘑菇头和DK
+每一个都保留了记忆里的样子
+又多了一点真人世界的真实感
+
+熟悉又陌生
+真的有种童年被重新点亮的感觉
+
+你最想先见到哪一个角色？
+我先投碧姬和库巴一票。""",
+        "hashtags": "#马里奥 #超级马里奥 #MarioBros #童年回忆 #游戏角色 #真人版 #经典游戏角色 #任天堂",
+    },
+    {
+        "day_label": "Game 4",
+        "type": "童年回忆盘点",
+        "theme": "如果童年游戏角色一起走进现实世界",
+        "why": "合集盘点更适合做评论和收藏承接，尤其适合周末晚间发，顺带测试用户更想追哪个宇宙。",
+        "topic_id": "game-childhood-characters-realworld",
+        "prompts": [
+            {
+                "desc": "图1·封面：熟悉角色合集主视觉",
+                "prompt": "A lineup of iconic retro game-inspired characters reimagined in the real world, ultra photorealistic cinematic realism, nostalgic and emotional, each character highly recognizable, believable skin, costume and creature texture, vibrant but grounded movie poster energy --ar 3:4 --s 650 --v 6.1",
+                "note": "封面只放 2-3 个最熟悉的角色，不要把全部角色挤满。",
+            },
+            {
+                "desc": "图2-6·角色分组盘点页",
+                "prompt": "Real-world cinematic reinterpretations of nostalgic game characters grouped by vibe: heroes, cute sidekicks, villains, each frame focused and emotionally readable, realistic material detail, natural anatomy, high recognition first --ar 3:4 --s 600 --v 6.1",
+                "note": "后面再展开世界观，封面先保识别度。",
+            },
+        ],
+        "cover_text": "童年角色活了",
+        "cover_text_v2": "童年角色活了",
+        "title": "如果童年游戏角色一起走进现实世界",
+        "title_v2": "如果童年游戏角色一起走进现实世界",
+        "body": """有些角色
+你小时候天天看
+长大后却很少认真想象
+
+如果他们真的一起走进现实世界
+会不会比记忆里还要鲜活
+
+这次我把最熟悉的几类角色放在一起
+做成了一个真人化小合集
+
+不是想复刻童年
+而是想看看
+那些熟悉的记忆
+如果突然有了现实质感
+会不会更戳人
+
+你最想看哪个宇宙继续展开？""",
+        "hashtags": "#童年回忆 #游戏角色 #真人化 #经典IP #游戏宇宙 #怀旧向 #经典游戏角色 #小红书图文",
+    },
+    {
+        "day_label": "Game 5",
+        "type": "游戏动画艺术感",
+        "theme": "电影感耀西单角色情绪卡",
+        "why": "参考当前高赞内容，今天不做多人宇宙感，也不做真人化，直接打「高识别单角色 + 大情绪近景 + 一句判断」：耀西本身就有天然可爱度，更容易做出停留和评论。",
+        "topic_id": "game-yoshi-character-emotion-animation-art",
+        "prompts": [
+            {
+                "desc": "图1·封面：耀西高情绪近景主视觉",
+                "prompt": "Yoshi-inspired character in premium animated feature film style, huge expressive face close to camera, joyful eyes, soft painterly lighting, lush cinematic color scripting, gentle fantasy background, ultra clear focal point, emotional poster composition, cute but refined, one-character close-up --ar 3:4 --s 650 --v 6.1",
+                "note": "封面只留耀西一个角色，脸或上半身占满画面，重点是情绪和识别度，不要多人。",
+            },
+            {
+                "desc": "图2-4·单角色动作补充：回头笑 / 靠近镜头 / 侧脸发光",
+                "prompt": "Single Yoshi-inspired character in cinematic animation art style, expressive pose, warm emotional lighting, polished fantasy background painting, charming silhouette, soft color transitions, every frame feels like a movie still focused on one lovable character --ar 3:4 --s 620 --v 6.1",
+                "note": "后面也不要展开多人世界观，继续围绕一个角色做情绪变化。",
+            },
+            {
+                "desc": "图5·互动收束页",
+                "prompt": "Clean vertical end card for Xiaohongshu, animated fantasy poster layout, bold typography area, playful but tasteful Nintendo-inspired palette, room for a comment question, strong readability --ar 3:4 --s 350 --v 6.1",
+                "note": "互动问题建议：除了耀西，你们最想先看谁走这种单角色情绪卡？",
+            },
+        ],
+        "cover_text": "耀西太会了",
+        "cover_text_v2": "耀西太会了",
+        "title": "这只耀西也太会了吧",
+        "title_v2": "这只耀西也太会了吧",
+        "body": """这次我没做多人
+也没做什么大世界观
+
+就只盯着耀西一个角色看
+
+结果发现
+这种单角色的情绪卡
+反而更容易让人停下来
+
+不是那种偏幼的卡通感
+而是更像动画电影里的近景海报
+
+脸、眼神、颜色、轮廓
+都很直接
+
+你第一眼不会先想分析
+而是会先觉得
+怎么这么会
+
+如果这条你们喜欢
+我就继续做这种单角色情绪卡
+除了耀西
+你们最想先看谁？""",
+        "hashtags": "#耀西 #Yoshi #马里奥电影 #超级马里奥 #任天堂 #动画艺术风 #角色海报 #童年回忆",
+        "visual_guardrail": "今天所有画面统一走单角色动画情绪卡，不要真人脸、不要多人拼贴、不要知识卡信息墙。",
+        "tool_focus_override": [
+            {
+                "name": "封面工坊",
+                "reason": "参考高赞内容后，今天不适合再做多人海报。最重要的是单角色大脸、强情绪、强识别。",
+                "action": "封面只保留耀西一个角色，脸或上半身占大部分画面，大字只留一句判断，不做多人拼贴。",
+            },
+            {
+                "name": "主页承接",
+                "reason": "这类单角色情绪卡更容易让人想继续看同系列，主页承接要跟上。",
+                "action": "正文或首评加一句「想看同系列角色卡可以进主页继续翻」，把浏览导向主页和连续追更。",
+            },
+            {
+                "name": "预发布检查",
+                "reason": "今天关键词不该太散，重点是角色名和电影感，不是宇宙感。",
+                "action": "标题和正文前两段保留「耀西 / Yoshi / 马里奥电影 / 动画艺术风」等明确搜索词，标题优先用角色名+情绪判断。",
+            },
+            {
+                "name": "互动话术/组件",
+                "reason": "今天更适合做“下一个角色是谁”的投票，而不是问风格本身。",
+                "action": "首评直接问「除了耀西，你们最想先看谁走这种单角色情绪卡？」并在30分钟内回复前10条评论。",
+            },
+        ],
+        "execution_focus_override": [
+            "标题优先用「耀西 + 情绪判断」结构，同时至少保留 1 个可搜索词，不要写成抽象审美标题。",
+            "今天所有画面统一走单角色动画情绪卡，不要多人拼贴，不要知识卡信息墙。",
+            "正文或首评加一句「想看同系列角色卡可以进主页继续翻」，把浏览往主页承接。",
+            "评论区首条直接问「除了耀西，你们最想先看谁走这种单角色情绪卡？」把今天目标定成角色投票。",
+        ],
+        "follow_conversion_todo_override": [
+            "今天这条统一用单角色动画情绪卡表达，封面、标题、正文都不要再讲真人版或多人宇宙。",
+            "封面只保留耀西一个角色，大字只写一句判断，优先「耀西太会了」这种情绪句。",
+            "正文或首评补一句「想看同系列角色卡可以进主页继续翻」，重点把更多浏览导进主页。",
+            "正文收尾统一成「如果这条你们喜欢，我就继续做这种单角色情绪卡」。",
+            "发布后15分钟自留首评，置顶评论统一问「除了耀西，你们最想先看谁走这种单角色情绪卡？」并在30分钟内回复前10条评论。",
+        ],
+        "follow_conversion_templates_override": {
+            "series_name": "今日测试：单角色动画情绪卡",
+            "title_formula": "这只X也太会了吧 / 谁懂X有多会",
+            "cover_badge": "角色卡 / 动画风",
+            "ending_line": "如果这条你们喜欢，我就继续做这种单角色情绪卡。",
+            "sticky_comment": "除了耀西，你们最想先看谁走这种单角色情绪卡？评论区票高的我先做。",
+        },
+        "data_driven_note_append": "今天这条按单角色动画情绪卡执行，不走真人化，也不做多人宇宙海报。参考高赞内容后，今天更适合用高识别角色近景和一句情绪判断先抢停留，再把浏览导进主页和评论区。",
+    },
+]
+
 DAILY_PACKAGES = [
 
     # ===== Day 1：视觉反转型（新增·对标#油画Top1） =====
@@ -225,7 +734,9 @@ DAILY_PACKAGES = [
             },
         ],
         "cover_text": "放大AI油画10倍后 我整个人不好了",
+        "cover_text_v2": "放大10倍像真画",
         "title": "放大AI油画10倍后 我整个人不好了",
+        "title_v2": "AI油画放大10倍 为什么像真画？",
         "body": """我一直觉得AI画的东西放大了肯定穿帮
 
 直到我把这几幅放大了10倍看
@@ -294,7 +805,9 @@ prompt里一定要加impasto和visible brushstrokes
             },
         ],
         "cover_text": "他故意把画画模糊 然后卖了3个亿",
+        "cover_text_v2": "越模糊 越值钱？",
         "title": "他故意把画画模糊 然后卖了3个亿",
+        "title_v2": "为什么他越画越糊 反而越值钱？",
         "body": """你能想象吗
 
 一个画家花好几周画了一幅超级写实的油画
@@ -365,7 +878,9 @@ Prompt放评论区了 想试的自取
             },
         ],
         "cover_text": "在上海随手拍的 朋友问我这是莫奈的画吗",
+        "cover_text_v2": "上海街景像油画",
         "title": "在上海随手拍的 朋友问我这是哪幅油画",
+        "title_v2": "为什么这张上海街景 一拍就像莫奈？",
         "body": """上周下雨嘛
 我在路上随手拍了张积水倒影的照片
 
@@ -434,7 +949,9 @@ Prompt放评论区了 想试的自取
             },
         ],
         "cover_text": "用AI给客厅画了幅挂画 朋友以为我花了大几千",
+        "cover_text_v2": "一上墙 客厅就贵了",
         "title": "用AI给客厅画了幅挂画 来的人都问在哪买的",
+        "title_v2": "为什么有些挂画一上墙 客厅就贵了？",
         "body": """事情是这样的
 
 我一直想给客厅挂幅油画
@@ -497,7 +1014,9 @@ AI就会自动往家居方向靠
             },
         ],
         "cover_text": "这5个90后画画的 身价已经过千万了",
+        "cover_text_v2": "这5个90后 画价离谱",
         "title": "这5个90后画画的 身价已经过千万了…",
+        "title_v2": "这5个90后 为什么一出手就很贵？",
         "body": """我说真的
 之前一直以为画家都是那种白胡子老爷爷
 直到我查到这几个人的年龄
@@ -574,7 +1093,9 @@ AI就会自动往家居方向靠
             {"desc": "透纳戏剧光", "prompt": "Dramatic seascape painting in JMW Turner style, explosive golden sunset light breaking through storm clouds, atmospheric light dissolving forms, romantic sublime landscape, thick swirling paint texture, raw natural power --ar 3:4 --s 800 --v 6.1", "note": ""},
         ],
         "cover_text": "同样画个苹果 伦勃朗和莫奈画出来完全不一样",
+        "cover_text_v2": "同样画苹果 气质差很大",
         "title": "同样画个苹果 伦勃朗和莫奈画出来完全不一样",
+        "title_v2": "同样画苹果 为什么气质能差这么多？",
         "body": """想了很久要不要写这篇
 因为感觉一讲到"光"就很容易变成美术课
 
@@ -666,7 +1187,9 @@ prompt：Turner dramatic light, atmospheric dissolving forms
             {"desc": "AI模仿变体", "prompt": "Contemporary rococo oil painting, Flora Yukhnovich inspired, abstract garden party scene dissolving into pastel swirls, cream rose and mint green palette, Fragonard echoes in contemporary abstraction, dreamy sensual atmosphere --ar 3:4 --s 800 --v 6.1", "note": ""},
         ],
         "cover_text": "90后的她 一幅画卖了2000万",
+        "cover_text_v2": "90后 她一张画2000万",
         "title": "90后的她一幅画2000万 但大部分人没听过她名字",
+        "title_v2": "为什么这个90后画家的画 会贵到2000万？",
         "body": """Flora Yukhnovich
 弗洛拉·尤赫诺维奇
 1990年 英国
@@ -740,7 +1263,9 @@ AI还差点意思
             {"desc": "莫兰迪色抽象", "prompt": "Abstract oil painting in Morandi muted palette, overlapping geometric shapes in dusty pink grey and sage, soft edges, visible canvas texture, contemplative minimalist composition, museum quality fine art --ar 3:4 --s 800 --v 6.1", "note": ""},
         ],
         "cover_text": "用AI画了一组莫兰迪色油画 每张都想当壁纸",
+        "cover_text_v2": "这组灰调太显贵",
         "title": "用AI画了一组莫兰迪色油画 每一张都想存进手机",
+        "title_v2": "为什么莫兰迪色一出现 就显得很贵？",
         "body": """最近沉迷用AI画油画
 这次挑战了我最爱的莫兰迪色系
 
@@ -790,7 +1315,9 @@ Giorgio Morandi 意大利画家
             {"desc": "AI版Hockney风景", "prompt": "Yorkshire landscape painting in David Hockney style, bright vivid greens and purples, rolling hills with geometric tree forms, bold outlined shapes, joyful spring colors, iPad painting aesthetic transferred to oil on canvas --ar 3:4 --s 750 --v 6.1", "note": ""},
         ],
         "cover_text": "让AI画Hockney的泳池 你猜哪张是真的",
+        "cover_text_v2": "哪张更像真的",
         "title": "让AI画Hockney的泳池 你能分清哪张是真的吗",
+        "title_v2": "让AI画Hockney泳池 哪张更像真的？",
         "body": """David Hockney
 80多岁还在用iPad画画的英国老爷子
 他的泳池画可能是当代艺术里最好认的
@@ -836,7 +1363,9 @@ AI没学到的：
             {"desc": "对比图：--s 1000(极致)", "prompt": "Oil painting of a countryside cottage in autumn, warm colors --ar 3:4 --s 1000 --v 6.1", "note": "极致风格化 可能会过度 也展示一下"},
         ],
         "cover_text": "就改了一个数字 AI油画从「假」变「真」了",
+        "cover_text_v2": "这一个数 像真画了",
         "title": "就改了一个数字 AI油画从假变真了",
+        "title_v2": "为什么只改一个数字 画面就像真画？",
         "body": """被问了无数次的一个问题：
 
 "为什么我的AI油画看着像插画 你的看着像真画？"
@@ -933,7 +1462,9 @@ AI没学到的：
             },
         ],
         "cover_text": "用AI画了9个春天的瞬间🌸｜哪个是你的春天",
+        "cover_text_v2": "春天一来 画面会发光",
         "title": "用AI画了9个春天的瞬间🌸｜哪个是你的春天",
+        "title_v2": "为什么有些春天画面 一看就会发光？",
         "body": """春天是什么？
 
 小红书问我想不想交换春天
@@ -1036,7 +1567,9 @@ AI没学到的：
             },
         ],
         "cover_text": "一整组蓝💙｜看完整个人安静下来了",
+        "cover_text_v2": "这组蓝色会降噪",
         "title": "用AI画了一整组蓝💙｜看完整个人安静下来了",
+        "title_v2": "为什么这组蓝色一出现 人就安静了？",
         "body": """蓝色大概是油画里最治愈的颜色了
 
 深海的蓝 雨夜的蓝 远山的蓝 窗外的蓝
@@ -1114,7 +1647,9 @@ AI没学到的：
             },
         ],
         "cover_text": "在黑板上乱涂乱画居然拍出4.5亿💰｜是天才还是骗局",
+        "cover_text_v2": "像乱写乱画 却很贵",
         "title": "黑板上乱涂乱画居然卖了4.5亿💰｜凭什么这么贵",
+        "title_v2": "为什么像乱写乱画 却拍出4.5亿？",
         "body": """你能想象吗？
 一块看起来就像小孩在黑板上乱涂乱画的画布
 在苏富比拍卖行拍出了7050万美元（约4.5亿人民币）🤯
@@ -1193,7 +1728,9 @@ AI没学到的：
             },
         ],
         "cover_text": "80多岁 还在iPad上画画",
+        "cover_text_v2": "80多岁 画面还很年轻",
         "title": "80多岁还在iPad上画画 他凭什么卖到6亿？",
+        "title_v2": "为什么80多岁的Hockney 画面还这么年轻？",
         "body": """很多人到80岁的时候
 已经不太愿意学新东西了吧
 
@@ -1294,7 +1831,9 @@ David Hockney
             }
         ],
         "cover_text": "赵本山×范伟 乱入西方名画",
+        "cover_text_v2": "赵本山闯进名画里",
         "title": "名画破次元壁｜赵本山×范伟：中式喜剧遇上西方名画",
+        "title_v2": "如果赵本山和范伟 闯进西方名画里？",
         "body": """如果赵本山和范伟突然闯进西方名画里
 会发生什么？
 
@@ -1345,7 +1884,9 @@ CREATIVE_PACKAGES = [
             },
         ],
         "cover_text": "如果维米尔拍到了凌晨四点的监控画面",
+        "cover_text_v2": "凌晨四点 监控像名画",
         "title": "如果维米尔拍到了凌晨四点的监控画面",
+        "title_v2": "为什么凌晨四点的监控 这么像维米尔？",
         "body": """我最近突然在想一个问题
 
 如果维米尔活在今天
@@ -1392,7 +1933,9 @@ CREATIVE_PACKAGES = [
             },
         ],
         "cover_text": "凌晨两点的便利店 夹在霍普和Hockney之间",
+        "cover_text_v2": "同一家便利店 两种世界",
         "title": "凌晨两点的便利店，夹在霍普和Hockney之间",
+        "title_v2": "为什么同一家便利店 会像两种人生？",
         "body": """同样是一个便利店
 
 Edward Hopper 来画
@@ -1440,7 +1983,9 @@ David Hockney 来画
             },
         ],
         "cover_text": "把“想辞职但又不敢”画成9张油画色卡",
+        "cover_text_v2": "这情绪 居然有颜色",
         "title": "把“想辞职但又不敢”画成9张油画色卡",
+        "title_v2": "如果“想辞职又不敢”被画成9种颜色",
         "body": """有些情绪其实很难说清
 
 比如那种
@@ -1487,7 +2032,9 @@ David Hockney 来画
             },
         ],
         "cover_text": "如果上海地铁被临时改造成一间美术馆",
+        "cover_text_v2": "地铁站突然像美术馆",
         "title": "如果上海地铁被临时改造成一间美术馆",
+        "title_v2": "为什么有些地铁站 一拍就像美术馆？",
         "body": """我每天坐地铁的时候都会有一种错觉
 
 有些站台其实特别像展览现场
@@ -1534,7 +2081,9 @@ David Hockney 来画
             },
         ],
         "cover_text": "如果Richter也拍小红书 他的一天会有多无聊",
+        "cover_text_v2": "无聊 但很高级",
         "title": "如果Richter也拍小红书，他的一天会有多无聊",
+        "title_v2": "如果Richter拍小红书 为什么会这么无聊？",
         "body": """我最近老在想
 
 如果里希特不是活在美术馆里
@@ -1587,7 +2136,9 @@ David Hockney 来画
             },
         ],
         "cover_text": "那些差点被我删掉的AI油画废稿 反而更像真画",
+        "cover_text_v2": "越像废稿 越像真画",
         "title": "那些差点被我删掉的AI油画废稿，为什么反而更像真画",
+        "title_v2": "为什么差点删掉的废稿 反而更像真画？",
         "body": """我以前做AI图有个毛病
 
 一看到不够完整
@@ -1639,7 +2190,9 @@ AI一旦太顺
             },
         ],
         "cover_text": "如果莫奈、Hockney、Richter在一个群里改同一张图",
+        "cover_text_v2": "同一张图 三种人生",
         "title": "如果莫奈、Hockney、Richter在一个群里改同一张图",
+        "title_v2": "同一张图 交给三位画家会变成什么？",
         "body": """我有时候觉得
 看不同画家改同一个场景
 真的很像看一群性格完全不同的人在群里回消息
@@ -1696,7 +2249,9 @@ Richter大概率一句话不说
             },
         ],
         "cover_text": "周杰伦MV里最狠的 不是滤镜，是藏得最深的那幅名画",
+        "cover_text_v2": "这几秒 像克里姆特",
         "title": "周杰伦MV里最狠的，不是滤镜，是藏得最深的那幅名画",
+        "title_v2": "周杰伦MV里最狠的，不是滤镜，是藏得最深的那幅名画",
         "body": """以前看周杰伦MV
 我只会觉得画面很贵
 
@@ -1735,11 +2290,6 @@ Richter大概率一句话不说
 ]
 
 
-def _get_weekday_package_index(target_date: datetime.datetime) -> int:
-    """根据日期返回默认内容包索引。支持对特定日期做显式内容覆盖。"""
-    return _get_package_candidate_indices(target_date)[0]
-
-
 def get_today_package() -> dict:
     """获取今天的内容包（结合日历引擎智能推荐）
     优先级：官方活动（首次推荐）> 节日热点 > 星期策略
@@ -1754,7 +2304,7 @@ def get_today_package() -> dict:
         act = official_activities[0]  # 取第一个活动
         pkg_idx = act.get("daily_package_index")
         if pkg_idx is not None and pkg_idx < len(DAILY_PACKAGES):
-            package = DAILY_PACKAGES[pkg_idx].copy()
+            package = _apply_default_prompt_rules(DAILY_PACKAGES[pkg_idx].copy())
             package["time"] = rec["recommended_time"]
             package["is_holiday"] = False
             package["is_official_activity"] = True

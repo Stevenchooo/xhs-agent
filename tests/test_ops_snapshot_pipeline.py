@@ -5,6 +5,7 @@ import datetime
 from unittest import mock
 
 from xhs_agent import daily, strategy, tracker
+from xhs_agent import metrics_store
 
 
 class OpsSnapshotPipelineTests(unittest.TestCase):
@@ -20,6 +21,7 @@ class OpsSnapshotPipelineTests(unittest.TestCase):
             "ENGAGEMENT_LOG_FILE": tracker.ENGAGEMENT_LOG_FILE,
             "OPERATIONS_SNAPSHOT_FILE": tracker.OPERATIONS_SNAPSHOT_FILE,
         }
+        self.original_metrics_db_file = metrics_store.METRICS_DB_FILE
 
         tracker.DATA_DIR = self.temp_dir.name
         tracker.ANALYTICS_FILE = os.path.join(self.temp_dir.name, "analytics.json")
@@ -27,12 +29,17 @@ class OpsSnapshotPipelineTests(unittest.TestCase):
         tracker.POST_TRACKING_FILE = os.path.join(self.temp_dir.name, "post_tracking.json")
         tracker.ENGAGEMENT_LOG_FILE = os.path.join(self.temp_dir.name, "engagement_log.json")
         tracker.OPERATIONS_SNAPSHOT_FILE = os.path.join(self.temp_dir.name, "operations_snapshot.json")
+        metrics_store.METRICS_DB_FILE = os.path.join(self.temp_dir.name, "metrics.sqlite3")
 
         self.addCleanup(self._restore_tracker_paths)
+        self.addCleanup(self._restore_metrics_store_path)
 
     def _restore_tracker_paths(self):
         for key, value in self.original_tracker_paths.items():
             setattr(tracker, key, value)
+
+    def _restore_metrics_store_path(self):
+        metrics_store.METRICS_DB_FILE = self.original_metrics_db_file
 
     def _sample_snapshot(self):
         return {

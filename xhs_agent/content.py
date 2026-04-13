@@ -1,4 +1,4 @@
-"""小红书运营Agent - AI内容生成器（名画故事·油画审美 专属版）
+"""小红书运营Agent - AI内容生成器
 工作流：Agent出Prompt → 用户执行生成 → 用户反馈结果 → Agent出配套文案
 """
 
@@ -7,7 +7,14 @@ from types import SimpleNamespace
 from anthropic import Anthropic
 
 from . import config as runtime_config
-from .config import ACCOUNT_DESC, ACCOUNT_NICHE, AUDIENCE_PERSONA, CONTENT_TYPES
+from .config import (
+    ACCOUNT_DESC,
+    ACCOUNT_NICHE,
+    AUDIENCE_PERSONA,
+    CONTENT_TYPES,
+    RECENT_CTR_PLAYBOOK,
+    REALISTIC_IMAGE_PROMPT_RULES,
+)
 
 
 def _extract_text(response) -> str:
@@ -83,7 +90,7 @@ def _get_client():
     config = runtime_config.get_ai_runtime_config()
     api_key = (config.get("api_key") or "").strip()
     if not api_key:
-        raise ValueError("未配置 Claude API Key，请先在设置页面填写，或设置环境变量 CLAUDE_CODE_API_KEY / ANTHROPIC_API_KEY")
+        raise ValueError("未配置 Claude API Key，请先在设置页面填写，或配置 .env.local / 环境变量 CLAUDE_CODE_API_KEY / ANTHROPIC_API_KEY")
     return _ClaudeCompatClient(api_key=api_key, base_url=config.get("base_url") or "")
 
 
@@ -92,39 +99,83 @@ def _get_model() -> str:
     return runtime_config.get_ai_runtime_config().get("model", "claude-sonnet-4-6")
 
 
+def _build_ctr_playbook_block() -> str:
+    """把最近点击率复盘经验压缩成可复用的提示词规则块。"""
+    formulas = "\n".join(f"- {item}" for item in RECENT_CTR_PLAYBOOK.get("title_formula", []))
+    cover_dos = "\n".join(f"- {item}" for item in RECENT_CTR_PLAYBOOK.get("cover_dos", []))
+    cover_donts = "\n".join(f"- {item}" for item in RECENT_CTR_PLAYBOOK.get("cover_donts", []))
+    examples = "；".join(RECENT_CTR_PLAYBOOK.get("examples", []))
+    return f"""【最新CTR经验（必须吸收）】
+- 核心转向：{RECENT_CTR_PLAYBOOK.get('core_shift', '')}
+
+【标题/封面公式】
+{formulas}
+
+【封面该做】
+{cover_dos}
+
+【封面别做】
+{cover_donts}
+
+【示例】
+- {examples}
+"""
+
+
+def _build_realism_prompt_block() -> str:
+    """把“非常真实”的出图偏好压缩成可复用规则。"""
+    must_have = "\n".join(f"- {item}" for item in REALISTIC_IMAGE_PROMPT_RULES.get("must_have", []))
+    avoid = "\n".join(f"- {item}" for item in REALISTIC_IMAGE_PROMPT_RULES.get("avoid", []))
+    return f"""【真实感优先规则】
+- {REALISTIC_IMAGE_PROMPT_RULES.get('core', '')}
+
+【Prompt 必带倾向】
+{must_have}
+
+【Prompt 必避倾向】
+{avoid}
+
+【默认追加关键词】
+- {REALISTIC_IMAGE_PROMPT_RULES.get('suffix', '')}
+"""
+
+
 def _build_system_prompt() -> str:
     """根据当前账号定位和受众画像动态拼装系统提示词。"""
-    return f"""你是一个资深的小红书艺术博主和内容运营专家，深谙「爆款密码」。你深度了解名画故事、油画审美、AI创意辅助，以及小红书平台的内容风格和算法机制。
+    ctr_playbook = _build_ctr_playbook_block()
+    return f"""你是一个资深的小红书内容运营专家，深谙「爆款密码」，深度了解当前账号的定位方向和小红书平台的内容风格、算法机制。
 
 【账号定位】
 - 领域：{ACCOUNT_NICHE}
 - 简介：{ACCOUNT_DESC}
 
 【你的核心受众画像（极度重要）】
-- 性别倾向：{AUDIENCE_PERSONA.get('gender', '以审美兴趣用户为主')}
-- 年龄层：{AUDIENCE_PERSONA.get('age', '25-44岁为主')}
+- 性别倾向：{AUDIENCE_PERSONA.get('gender', '泛游戏+怀旧向用户')}
+- 年龄层：{AUDIENCE_PERSONA.get('age', '20-35岁为主')}
 - 地域：{AUDIENCE_PERSONA.get('geography', '一二线城市为主')}
-- 兴趣偏好：{AUDIENCE_PERSONA.get('interests', '名画故事、画家冷知识、油画色彩')}
+- 兴趣偏好：{AUDIENCE_PERSONA.get('interests', '经典游戏、童年角色、真人化、反差创意')}
 - 心理特征：{AUDIENCE_PERSONA.get('psychographics', '')}
 
 【你的专业背景】
-- 精通西方绘画、当代艺术、画家故事与作品拆解，能把复杂艺术内容讲得通俗但不浅薄
-- 擅长把「名画故事」「价格反差」「画家冷知识」「色彩审美」组合成更容易被点开的内容
-- 了解 AI 绘图工具（Midjourney/SD 等）的使用方式，但内容重点仍然是审美与故事表达
+- 擅长把经典游戏角色和IP拉进现实世界，制造真人化反差和童年回忆共鸣
+- 精通AI图像生成工具（Midjourney/SD等），能输出高质量真人化角色内容
+- 了解小红书算法和流量池机制，懂得用封面、标题和互动设计拿到推荐
 
 【写作风格与爆款要求】
-1. 【强钩子】标题和前3句话必须制造反差、悬念、价格冲突、认知反转，先让人愿意点开。
-2. 【克制但有信息量】语气专业、自然、有判断，不要空喊高级感，也不要写成教科书。
+1. 【强钩子】标题和前3句话必须制造反差、悬念、童年回忆杀、认知反转，先让人愿意点开。
+2. 【克制但有信息量】语气自然、有人格感，优先讲角色、世界观和回忆感，不要把AI制作方式放在第一钩子。
 3. 【红线警告】绝对禁止使用「绝绝子」「姐妹们」「家人们」「贴贴」等低幼化表达。
 4. 【社交货币】让读者看完觉得“我顺手知道了一个很值钱/很有趣/很能聊的艺术知识，值得转发或收藏。”
 5. 【排版节奏】短句为主，段落清晰，适度使用 emoji 增加节奏，但不要堆砌。
-6. 【互动设计】结尾抛出一个低门槛但有态度的问题，优先引导评论、收藏、关注主页继续看同系列内容。
+6. 【互动设计】结尾抛出低门槛互动（如「下一期你们最想看谁来到现实世界？」），引导评论和关注。
+
+{ctr_playbook}
 """
 
 
 SYSTEM_PROMPT = _build_system_prompt()
 
-PROMPT_EXPERT = """你是一位顶级的AI绘画提示词工程师，尤其擅长生成油画风格的AI作品。
+PROMPT_EXPERT = f"""你是一位顶级的AI绘画提示词工程师，尤其擅长生成高质量、材质可信、视觉完成度极高的AI作品。
 
 你的核心能力：
 - 精通Midjourney (MJ)提示词语法，包括所有参数：--ar（宽高比）、--s（风格化程度）、--c（混乱度）、--v（版本）、--style（风格）、--no（排除元素）等
@@ -140,6 +191,13 @@ PROMPT_EXPERT = """你是一位顶级的AI绘画提示词工程师，尤其擅�
 3. 提供多个变体供选择
 4. 附带中文说明解释每个关键词的作用
 5. 给出参数建议和注意事项
+
+{_build_realism_prompt_block()}
+
+额外要求：
+- 如果用户没有明确要求插画、油画、二次元、抽象或实验风，默认主推版本优先“非常真实”
+- 只要涉及角色真人化、现实世界、电影感、IP改编，主推prompt必须先走“接近现实、像真实拍摄”的路线
+- 要主动避免塑料感、玩具感、过度磨皮、廉价CG感
 """
 
 
@@ -164,7 +222,7 @@ def generate_art_prompt(
         aspect_ratio: 宽高比
         extra_requirements: 额外要求
     """
-    user_prompt = f"""请为以下AI油画创作需求生成专业的提示词：
+    user_prompt = f"""请为以下AI创作需求生成专业提示词：
 
 🎨 使用工具：{tool}
 🖼️ 风格参考：{style_reference}
@@ -172,10 +230,11 @@ def generate_art_prompt(
 🌈 氛围情绪：{mood if mood else "由你根据主题和风格推荐"}
 📐 宽高比：{aspect_ratio}
 💡 额外要求：{extra_requirements if extra_requirements else "无"}
+📍真实感要求：除非我明确要求插画/油画/抽象风，否则主推版本必须尽量接近现实、非常真实、材质可信，避免塑料CG感
 
 请按以下格式输出：
 
-【推荐Prompt 1（主推）】
+【推荐Prompt 1（主推·最真实）】
 （完整的英文提示词，可以直接复制使用）
 
 【Prompt 1 中文解析】
@@ -217,7 +276,11 @@ def generate_style_prompt(painter_name: str, tool: str = "Midjourney") -> str:
     """
     根据画家名字生成模仿其风格的提示词
     """
-    user_prompt = f"""我要用{tool}模仿「{painter_name}」的油画风格来创作AI作品。
+    user_prompt = f"""我要用{tool}模仿「{painter_name}」的风格来创作AI作品。
+
+默认要求：
+- 如果输出里包含人物、角色、现实场景，请优先给出更真实、更可信、更接近现实摄影的版本
+- 避免塑料感、玩具感、过度平滑、廉价CG感
 
 请完成以下内容：
 
@@ -262,7 +325,7 @@ def generate_batch_prompts(theme: str, count: int = 5, tool: str = "Midjourney")
     """
     批量生成一组主题统一的提示词（适合做合集/系列内容）
     """
-    user_prompt = f"""我要用{tool}批量生成一组主题为「{theme}」的AI油画作品，用于小红书发布合集/系列内容。
+    user_prompt = f"""我要用{tool}批量生成一组主题为「{theme}」的AI作品，用于小红书发布合集/系列内容。
 
 请生成{count}个风格各异但主题统一的提示词：
 
@@ -271,6 +334,7 @@ def generate_batch_prompts(theme: str, count: int = 5, tool: str = "Midjourney")
 2. 风格要有变化（可以尝试不同画派/不同色调/不同构图）
 3. 每个提示词都是完整可用的英文prompt
 4. 整组作品放在一起要有「系列感」
+5. 如果主题适合做现实化表达，默认优先给出非常真实、材质可信、接近真实拍摄的版本，不要塑料CG感
 
 请按以下格式输出每一个：
 
@@ -447,7 +511,7 @@ def generate_content(
     hist_ctx = build_historical_context_for_ai()
     hist_block = f"\n\n{hist_ctx}\n请参考以上历史数据：学习表现最好的笔记的写法，避免表现差的笔记的问题。" if hist_ctx else ""
 
-    user_prompt = f"""请为小红书创作一篇「名画故事·油画审美」领域的笔记，要求如下：
+    user_prompt = f"""请为小红书创作一篇「游戏IP真人化·童年角色短视频」领域的笔记，要求如下：
 
 📌 内容分类：{category}
 📌 内容类型：{content_type}
@@ -460,16 +524,19 @@ def generate_content(
 - 摒弃“纯画作分享”和“平淡赞美”的路线，走【猎奇/揭秘/故事/反差】路线！
 - 开头必须抓人：直接抛出最违背常理、最震撼的数字（如金额）、或最大的悬念。
 - 正文核心：讲一个引人入胜的故事（比如一幅画为何卖天价、画中隐藏的秘密、画家的离奇经历）。提供给读者可以拿去“装杯”的社交货币。
-- 封面极其重要：必须在【配图建议】里明确指示要在封面上加上醒目、有反差感的大字标题（如“放大后细思极恐”、“卖了3个亿”等）。纯净的风景画没人点！
+- 封面极其重要：必须在【封面大字建议】和【配图建议】里明确指示封面只打一个最强感觉或判断，先命名感受，再解释原因。
+- 封面文案优先 6-12 个字，具体、直白、能缩略图秒懂，例如「一上身就像油画」「真正贵的是画面」「这套没站住」。
+- 避免把「审美失焦」「高级感逻辑」「有些」「其实」这类抽象或泛化表达当成封面主钩子。
+- 配图建议里必须说明：封面优先单主体、单轮廓、单局部，不要多人远景和杂乱背景。
 - 结尾引导：用提问或对比引导评论（例如：如果是你，你觉得这幅画值这个价吗？）
 
 请按以下格式输出：
 
 【标题】
-（必须制造反差、包含冲突感或悬念，带emoji，不超过20字）
+（必须制造反差、包含冲突感或悬念，不超过22字；优先让人1秒看懂在说什么，emoji可有可无）
 
 【封面大字建议】
-（必须提供：建议写在封面图上的大字文案，字体要大要醒目，直击痛点/悬念）
+（只给1条最推荐版本：建议写在封面图上的大字文案，6-12字，具体、直白、先打感觉不先讲理论）
 
 【正文】
 （500-800字，讲故事为主，避免空洞的词藻堆砌，用emoji分段增加可读性）
@@ -513,17 +580,19 @@ def generate_titles(category: str, topic: str, count: int = 5) -> list:
     hist_ctx = build_historical_context_for_ai()
     hist_block = f"\n\n{hist_ctx}\n请参考历史表现最好的标题风格来生成。" if hist_ctx else ""
 
-    user_prompt = f"""请为以下小红书「名画故事·油画审美」笔记主题生成{count}个吸引人的标题：
+    user_prompt = f"""请为以下小红书「游戏IP真人化·童年角色短视频」笔记主题生成{count}个吸引人的标题：
 
 分类：{category}
 主题：{topic}
 
 要求：
-1. 每个标题不超过20字
-2. 风格各异：有的用数字、有的用疑问、有的用惊叹、有的用故事感、有的用对比
-3. 要兼顾「艺术感」和「点击欲」
-4. 可以适当使用emoji
-5. 适合小红书平台的标题风格
+1. 每个标题不超过22字
+2. 标题必须优先做到「1秒看懂在说什么」
+3. 至少一半标题要符合「具体对象 + 感觉/判断 + 结果/疑问」这个公式
+4. 少用「有些」「其实」「审美失焦」「高级感逻辑」这类抽象或泛化词
+5. 要兼顾「艺术感」和「点击欲」，但不要写成文艺海报标题
+6. emoji 可选，不是必需，每个标题最多 1 个
+7. 如果主题和时装、广告、红毯、画面气质有关，优先用「像油画」「会发光」「像活动照」「没主角」这类可感知的词
 {hist_block}
 
 请直接输出标题，每行一个，前面标上序号。"""
@@ -552,7 +621,7 @@ def generate_titles(category: str, topic: str, count: int = 5) -> list:
 
 def generate_hashtags(category: str, topic: str) -> str:
     """生成相关话题标签"""
-    user_prompt = f"""请为以下小红书「名画故事·油画审美」领域内容推荐话题标签：
+    user_prompt = f"""请为以下小红书「游戏IP真人化·童年角色短视频」领域内容推荐话题标签：
 
 分类：{category}
 主题：{topic}
@@ -580,7 +649,7 @@ def generate_hashtags(category: str, topic: str) -> str:
 
 def polish_content(original: str) -> str:
     """润色已有的笔记内容"""
-    user_prompt = f"""请帮我润色以下小红书「名画故事·油画审美」领域的笔记内容：
+    user_prompt = f"""请帮我润色以下小红书「游戏IP真人化·童年角色短视频」领域的笔记内容：
 
 原文：
 {original}
@@ -606,7 +675,7 @@ def polish_content(original: str) -> str:
 
 def analyze_and_improve(title: str, content: str) -> str:
     """分析现有内容并给出改进建议"""
-    user_prompt = f"""请分析以下小红书「名画故事·油画审美」领域的笔记，从专业运营角度给出改进建议：
+    user_prompt = f"""请分析以下小红书「游戏IP真人化·童年角色短视频」领域的笔记，从专业运营角度给出改进建议：
 
 标题：{title}
 正文：{content}
@@ -679,7 +748,7 @@ def analyze_viral_post(title: str, content: str, metrics_desc: str = "") -> str:
 - 📝 互动话术模板
 - 📝 标签策略建议
 
-【6. 用在我的「名画故事·油画审美」账号上的具体改编思路】
+【6. 用在我的「游戏IP真人化·童年角色短视频」账号上的具体改编思路】
 - 把这篇的爆款逻辑迁移到我的领域，给出3个具体选题"""
 
     try:
@@ -911,7 +980,7 @@ def generate_weekly_report(posts_data: list, account_info: dict) -> str:
     user_prompt = f"""请根据以下数据为我的小红书账号生成本周运营周报：
 
 📌 账号：{nickname}（{followers}粉丝）
-📌 领域：名画故事·油画审美
+📌 领域：游戏IP真人化·童年角色短视频
 
 📌 本周笔记数据：
 {posts_summary}
@@ -1311,12 +1380,12 @@ def generate_hot_topic_package(
 
 🔥 热点描述：{topic_desc}
 ⏰ 紧急程度：{urgency}
-🎨 账号定位：名画故事·油画审美
+🎨 账号定位：游戏IP真人化·童年角色短视频
 
 请生成以下全套内容：
 
 【🎯 热点切入角度】
-（如何把这个热点和「名画故事·油画审美」领域结合？给出最佳切入角度）
+（如何把这个热点和「游戏IP真人化·童年角色短视频」领域结合？给出最佳切入角度）
 
 【📌 标题（3个选择）】
 （3个不同风格的标题，标注推荐度）
@@ -1369,7 +1438,7 @@ def generate_engagement_batch(
 
 📌 互动场景：{scenario}
 📌 目标笔记的关键词领域：{keywords_str}
-📌 我的账号定位：名画故事·油画审美
+📌 我的账号定位：游戏IP真人化·童年角色短视频
 
 要求：
 1. 每条评论80-150字，有实质内容，不是水评论
@@ -1407,7 +1476,7 @@ def generate_reply_suggestions(comments: str) -> str:
     """
     user_prompt = f"""我的小红书笔记收到了以下评论，请帮我生成高质量的回复：
 
-📌 账号定位：名画故事·油画审美
+📌 账号定位：游戏IP真人化·童年角色短视频
 📌 收到的评论：
 {comments}
 
@@ -1426,7 +1495,7 @@ def generate_reply_suggestions(comments: str) -> str:
         response = client.chat.completions.create(
             model=_get_model(),
             messages=[
-                {"role": "system", "content": "你是一位有温度、有专业度的小红书艺术博主。回复评论时要真诚、有料、能引发二次互动。"},
+                {"role": "system", "content": "你是一位有温度、有专业度的小红书内容创作者。回复评论时要真诚、有料、能引发二次互动。"},
                 {"role": "user", "content": user_prompt}
             ],
             temperature=0.75,
@@ -1448,25 +1517,27 @@ def generate_cover_package(
     生成完整的封面制作方案：AI绘画Prompt + Canva排版指导 + 标题文案
     目标：CTR从6%提升到8%+
     """
-    from .config import COVER_TEMPLATES, COVER_UNIVERSAL_RULES, LEARNED_VIRAL_PATTERNS
+    from .config import COVER_TEMPLATES, COVER_UNIVERSAL_RULES, RECENT_CTR_PLAYBOOK
 
     template = COVER_TEMPLATES.get(content_type, COVER_TEMPLATES.get("AI油画合集"))
     rules = COVER_UNIVERSAL_RULES
-    patterns = LEARNED_VIRAL_PATTERNS
+    playbook = RECENT_CTR_PLAYBOOK
 
-    # 构建竞品爆款经验参考
-    cover_patterns = patterns.get("封面规律", {})
-    title_patterns = patterns.get("标题规律", {})
-    color_insight = patterns.get("色彩规律", {})
+    playbook_str = "【最近CTR复盘后的新规则（优先级高于旧审美习惯）】\n"
+    playbook_str += f"- 核心转向：{playbook.get('core_shift', '')}\n"
+    playbook_str += "- 标题公式：\n"
+    for item in playbook.get("title_formula", []):
+        playbook_str += f"  - {item}\n"
+    playbook_str += "- 封面该做：\n"
+    for item in playbook.get("cover_dos", []):
+        playbook_str += f"  - {item}\n"
+    playbook_str += "- 封面别做：\n"
+    for item in playbook.get("cover_donts", []):
+        playbook_str += f"  - {item}\n"
+    if playbook.get("examples"):
+        playbook_str += f"- 示例：{'；'.join(playbook['examples'])}\n"
 
-    learned_str = "【从竞品Top10爆款中学到的规律】\n"
-    for p in cover_patterns.values():
-        learned_str += f"- {p['name']}：{p['evidence']}（我们可以：{p['for_ai_account']}）\n"
-    for p in title_patterns.values():
-        learned_str += f"- {p['name']}：{p['evidence']}（适用：{p['applicable']}）\n"
-    learned_str += f"- 色彩规律：{color_insight.get('insight', '')}（Prompt用：{color_insight.get('for_prompts', '')}）\n"
-
-    user_prompt = f"""请为以下小红书笔记生成完整的封面制作方案。目标是让封面点击率(CTR)达到8%以上。
+    user_prompt = f"""请为以下小红书笔记生成完整的封面制作方案。目标是提升信息流点击率，优先做到「1秒看懂、3秒想点开」，不要默认做成以前那种文艺杂志感封面。
 
 📌 内容类型：{content_type}
 📌 笔记主题：{topic}
@@ -1485,28 +1556,41 @@ def generate_cover_package(
 - 标题位置：{rules['title_position']}
 - 缩略图测试：{rules['thumbnail_test']}
 
-{learned_str}
+📋 当前模板参考：
+- 布局：{template['layout']}
+- 标题公式：{template['title_formula']}
+- 标题示例：{'; '.join(template['title_examples'])}
+
+{playbook_str}
+
+额外要求：
+- 如果题目涉及时装、广告、红毯、画面气质、审美判断，优先输出「感觉命名型」封面：例如像油画、会发光、像活动照、没主角。
+- 封面默认只保留一个主体，不要多人远景，不要背景太满。
+- 封面大字优先 6-12 个字，只说一个判断，不要解释理论。
+- 不要默认使用暗金、暗角、英文小标签、贴纸、分析框来制造“高级感”。
+- 除非主题天然适合，否则不要把封面做成艺术展海报或杂志内页。
 
 请按以下格式完整输出：
 
+【🎯 封面方向判断】
+（先判断这个题最适合：感觉命名型 / 结论型 / 对比型，说明理由，并明确为什么不建议走旧的文艺杂志风）
+
 【🖼️ 封面AI绘画Prompt（直接复制到{tool}）】
 
-Prompt 1（主推·最鲜艳抢眼）：
-（完整英文Prompt，针对封面用途优化：高饱和度、构图留底部文字空间、3:4竖版）
+Prompt 1（主推·单主体感觉型）：
+（完整英文Prompt，针对小红书信息流优化：单主体、清晰轮廓、留白区可放大字、3:4竖版）
 
-Prompt 2（备选·不同构图）：
-（完整英文Prompt，换一种构图/色调）
+Prompt 2（备选·结论型）：
+（完整英文Prompt，换一种更直接、结论感更强的构图/色调）
 
-Prompt 3（备选·更暗调戏剧感）：
-（完整英文Prompt，暗调风格，适合加白色标题文字）
+Prompt 3（备选·对比型，仅在适合时使用）：
+（完整英文Prompt，如果这个题适合做前后/左右/好坏对比，就给出一版对比封面）
 
-【📝 封面标题文案（5个选择）】
-（5个优化后的标题，每个≤20字，必须包含：
- ① 数字或具体描述
- ② 1个搜索关键词（AI油画/当代艺术/Midjourney/油画教程等）
- ③ 1个情感钩子（惊艳/治愈/震撼等）
- ④ 1个emoji
- 标注每个标题的预估CTR效果：★★★/★★★★/★★★★★）
+【📝 封面大字文案（5个选择）】
+（5个可直接写在封面上的大字文案，每个 6-12 字，具体、直白、少抽象词，标注每个方案更适合的封面方向）
+
+【📰 笔记标题文案（5个选择）】
+（5个完整标题，每个≤22字；至少3个要符合「具体对象 + 感觉/判断 + 结果/疑问」公式；emoji可选）
 
 【🎨 Canva排版步骤（小白也能做）】
 （一步一步教怎么在Canva里做封面：
@@ -1517,17 +1601,20 @@ Prompt 3（备选·更暗调戏剧感）：
  5. 最终检查清单）
 
 【📱 缩略图自查清单】
-（做完后必须检查的5项，确保在手机小图下也能抓住眼球）
+（做完后必须检查的5项，确保手机小图下能立刻看懂，不靠用户脑补）
 
 【💡 CTR提升技巧（针对这个选题）】
-（3个针对性建议，帮助从6%→8%+）"""
+（3个针对性建议，帮助这个选题从低CTR风险走向更高点击）"""
 
     try:
         client = _get_client()
         response = client.chat.completions.create(
             model=_get_model(),
             messages=[
-                {"role": "system", "content": PROMPT_EXPERT + "\n\n你同时是一位精通小红书封面设计和CTR优化的视觉营销专家。你深知：封面CTR≥8%才能突破初始流量池（200-500曝光→5000+曝光）。你的封面Prompt要针对小红书信息流缩略图场景优化：高饱和度、视觉焦点明确、底部留文字空间。"},
+                {
+                    "role": "system",
+                    "content": PROMPT_EXPERT + "\n\n你同时是一位精通小红书封面设计和CTR优化的视觉营销专家。你的首要目标不是把封面做得像艺术杂志，而是让用户在信息流里1秒看懂、3秒想点开。默认输出『感觉命名型/结论型』封面：单主体、清晰轮廓、少抽象词、少装饰。除非用户明确要求，否则不要使用暗色杂志风、多人远景、英文装饰字、小贴纸或过度设计的分析框。"
+                },
                 {"role": "user", "content": user_prompt}
             ],
             temperature=0.8,
@@ -1657,7 +1744,7 @@ def generate_funnel_diagnosis(
     user_prompt = f"""请对以下小红书账号的「后链路漏斗数据」进行深度诊断，给出系统性优化方案：
 
 📌 账号：{nickname}（{followers}粉丝）
-📌 领域：名画故事·油画审美
+📌 领域：游戏IP真人化·童年角色短视频
 
 📊 各环节转化率：
 {stages_str}

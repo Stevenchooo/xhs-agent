@@ -1,6 +1,41 @@
-"""小红书运营Agent - 配置文件（名画故事·油画审美 专属版）"""
+"""小红书运营Agent - 配置文件（游戏IP真人化·童年角色短视频）"""
 
 import os
+
+
+def _load_local_env_files():
+    """Load local ignored env files for persistent runtime config."""
+    project_root = os.path.dirname(os.path.dirname(__file__))
+    candidates = [
+        os.path.join(project_root, ".env.local"),
+        os.path.join(project_root, ".env"),
+    ]
+
+    for path in candidates:
+        if not os.path.exists(path):
+            continue
+
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                for raw_line in f:
+                    line = raw_line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+
+                    key, value = line.split("=", 1)
+                    key = key.strip()
+                    if not key or key in os.environ:
+                        continue
+
+                    value = value.strip()
+                    if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+                        value = value[1:-1]
+                    os.environ[key] = value.strip()
+        except OSError:
+            continue
+
+
+_load_local_env_files()
 
 # Claude / Anthropic API 配置
 # 优先兼容用户更容易理解的 Claude Code 命名，其次兼容 Anthropic 官方环境变量。
@@ -59,45 +94,81 @@ ACCOUNT_DATA_FILE = os.path.join(DATA_DIR, "account_data.json")
 CONTENT_HISTORY_FILE = os.path.join(DATA_DIR, "content_history.json")
 ANALYTICS_FILE = os.path.join(DATA_DIR, "analytics.json")
 OPERATIONS_SNAPSHOT_FILE = os.path.join(DATA_DIR, "operations_snapshot.json")
+METRICS_DB_FILE = os.path.join(DATA_DIR, "metrics.sqlite3")
 
 # ==================== 账号定位 & 受众画像 ====================
-ACCOUNT_NICHE = "名画故事·油画审美"
-ACCOUNT_DESC = "把名画讲成故事，把油画做成可复制的审美体验，兼顾画家故事、色彩质感和轻量AI创意"
+ACCOUNT_NICHE = "游戏IP真人化·童年角色短视频"
+ACCOUNT_DESC = "把经典游戏角色拉进现实世界，做出有记忆点、有反差感、能引发童年共鸣的短视频内容"
 XHS_USER_ID = "1184199598"
 
 # 当前账号受众画像（基于近期笔记表现与主页内容结构）
 AUDIENCE_PERSONA = {
-    "gender": "男女都有，但更偏审美敏感、愿意停留看图看故事的人群",
-    "age": "25-44岁为主，兼顾艺术爱好者与轻收藏/轻审美用户",
-    "geography": "一二线城市为主，以上海及高线城市审美兴趣人群更匹配",
-    "interests": "名画故事、画家冷知识、油画色彩、空间氛围、审美提升",
-    "psychographics": "喜欢有反差、有故事、能顺手学到点东西的内容。对强营销和空泛夸赞不敏感，更吃『名画为什么厉害』『这幅画为什么值钱』『这种颜色为什么高级』这类解释型表达。",
+    "gender": "男女都有，但更偏经典游戏IP用户、真人短视频兴趣人群和愿意为童年回忆停留的人群",
+    "age": "18-34岁为主，兼顾轻游戏用户、短视频重度用户和怀旧向内容受众",
+    "geography": "新一线和一二线城市更集中，但热点游戏IP内容具备更强泛用户扩散能力",
+    "interests": "任天堂、马里奥、耀西、经典游戏角色、真人化、童年回忆、反差创意",
+    "psychographics": "更吃『熟悉IP + 现实反差 + 一眼能看懂』的内容结构。比起抽象审美解释，这批用户更容易被真人化、来到现实世界、童年角色复活这类钩子吸引，也更愿意为可爱感和回忆感点赞收藏。",
 }
 
-# 小红书内容分类（艺术领域细分）
+# 小红书内容分类（当前账号主赛道）
 CONTENT_CATEGORIES = [
-    "AI油画创作", "海外当代画家", "油画技法解析", "艺术作品赏析",
-    "画家故事", "AI绘画教程", "艺术展览资讯", "色彩美学",
-    "艺术收藏入门", "画室日常", "艺术灵感", "其他"
+    "游戏IP真人化", "角色萌系短视频", "游戏热点快反", "童年回忆盘点",
+    "制作过程/幕后", "跨IP混搭实验", "广告/时装借势实验", "其他"
 ]
 
-# 最佳发布时间段（艺术类内容特化）
+# 最佳发布时间段（基于最近笔记表现更新）
 BEST_POSTING_TIMES = {
     "weekday": [
-        {"time": "07:30-08:30", "score": 82, "desc": "早起通勤，一幅画唤醒美学感知，适合发精美作品图"},
-        {"time": "12:00-13:30", "score": 90, "desc": "午休刷手机高峰，适合发轻松的作品赏析和AI绘画对比"},
-        {"time": "18:30-19:30", "score": 86, "desc": "下班路上，适合发画家故事/短视频，引发情感共鸣"},
-        {"time": "21:00-23:00", "score": 95, "desc": "黄金时段！用户沉浸式浏览，适合发深度内容和高清大图"},
+        {"time": "12:00-13:30", "score": 82, "desc": "午休刷短视频高峰，适合发轻量可爱向或单角色内容"},
+        {"time": "18:30-19:30", "score": 88, "desc": "下班后开始回流，适合做热点快反或预热型内容"},
+        {"time": "20:00-21:00", "score": 96, "desc": "当前主力黄金档，已验证更适合真人化/童年回忆型内容起量"},
+        {"time": "21:30-23:00", "score": 90, "desc": "适合发盘点、世界观扩展和需要评论互动的内容"},
     ],
     "weekend": [
-        {"time": "09:30-11:00", "score": 90, "desc": "周末慢生活，用户更愿意欣赏艺术内容，适合长图文"},
-        {"time": "14:00-16:00", "score": 88, "desc": "午后文艺时光，适合深度画家介绍和AI创作过程"},
-        {"time": "20:00-23:00", "score": 93, "desc": "周末晚间黄金档，适合合集类和对比类爆款内容"},
+        {"time": "10:00-11:30", "score": 84, "desc": "周末上午适合发单角色萌系和轻热点内容"},
+        {"time": "14:00-16:00", "score": 86, "desc": "下午适合发童年回忆盘点或跨IP实验"},
+        {"time": "20:00-21:30", "score": 97, "desc": "周末最强档位，优先发经典IP真人化和世界观扩展内容"},
+        {"time": "22:00-23:00", "score": 91, "desc": "适合发互动感强、容易引发投票和站队的内容"},
     ]
 }
 
 # ==================== 内容类型模板（艺术领域专属） ====================
 CONTENT_TYPES = {
+    "游戏IP真人化": {
+        "desc": "把经典游戏角色或游戏宇宙拉进现实世界，用真人化反差拿点击和互动",
+        "structure": "熟悉IP出场 → 真人化反差 → 角色细节/彩蛋 → 评论区投票互动",
+        "avg_save_rate": "1-4%"
+    },
+    "角色萌系短视频": {
+        "desc": "单角色可爱向内容，主打短平快、治愈感和角色表情记忆点",
+        "structure": "角色高能瞬间 → 可爱细节放大 → 一句情绪总结 → 轻互动",
+        "avg_save_rate": "0.5-3%"
+    },
+    "游戏热点快反": {
+        "desc": "围绕Switch 2、新作发布、角色热搜等热点快速借势，但表达仍要回到IP反差和角色想象",
+        "structure": "热点切口 → 为什么和这个IP有关 → 你的真人化/二创角度 → 评论区接热点",
+        "avg_save_rate": "0.5-2%"
+    },
+    "童年回忆盘点": {
+        "desc": "把多个熟悉角色或同一宇宙做成合集，主打收藏和转发",
+        "structure": "总主题抛出 → 多角色依次展示 → 记忆点总结 → 让用户选最想看的下一期",
+        "avg_save_rate": "1-5%"
+    },
+    "制作过程/幕后": {
+        "desc": "展示角色真人化、画面生成或分镜思路，让内容兼顾过程感与创作可信度",
+        "structure": "成品效果 → 过程拆解 → Prompt/思路 → 失败与调整 → 引导收藏",
+        "avg_save_rate": "2-6%"
+    },
+    "广告/时装借势实验": {
+        "desc": "借用广告、红毯、时装周等画面感素材做反差实验，只适合作为低频测试",
+        "structure": "借势画面 → 反差判断 → 是否能套进用户熟悉认知 → 快速收束",
+        "avg_save_rate": "0.2-1.5%"
+    },
+    "时装周评论": {
+        "desc": "围绕时装周、红毯、高定造型做审美评论；当前仅适合作为低频对照样本",
+        "structure": "画面判断 → 具体问题点 → 为什么不成立 → 快速收束",
+        "avg_save_rate": "0.1-1%"
+    },
     "AI油画创作过程": {
         "desc": "展示AI生成油画的过程和成品，技术感+艺术感",
         "structure": "灵感来源 → 提示词/参数分享 → 生成过程 → 成品展示 → 调整心得",
@@ -147,6 +218,37 @@ CONTENT_TYPES = {
 
 # ==================== 选题灵感库（预置选题） ====================
 TOPIC_IDEAS = {
+    "游戏IP真人化": [
+        "如果马里奥兄弟真的来到现实世界，会长什么样？",
+        "Switch 2热度下，把马里奥新角色做成真人版会不会更带感？",
+        "如果耀西不是游戏角色，而是真实存在的小可爱",
+        "把蘑菇头、库巴、DK拉进现实世界",
+        "童年里的任天堂角色，如果拍成真人电影会怎样？",
+        "把经典游戏角色做成现实世界里的街拍海报",
+        "如果同一个角色交给不同真人风格去演，会差多大？",
+        "把游戏角色从卡通质感改成电影质感，差别到底在哪？",
+    ],
+    "角色萌系短视频": [
+        "我愿称之为「yoshi小可爱」",
+        "这只耀西的贴脸笑，真的很难不收藏",
+        "今天的快乐，交给蘑菇头负责",
+        "谁能拒绝一个来到现实世界的耀西？",
+        "短短十几秒，被游戏角色治愈到了",
+    ],
+    "游戏热点快反": [
+        "Switch 2刚热起来，马里奥角色来到现实会长这样吗？",
+        "新作刚上线，这个角色如果真人化会不会直接出圈？",
+        "趁着新CG热度，把这个宇宙重新做成真人版",
+        "今天的游戏热点，我更想把它做得更有记忆点",
+        "不是复述新闻，是把热点角色真的“带到现实里”",
+    ],
+    "童年回忆盘点": [
+        "如果童年游戏角色一起走进现实世界",
+        "那些年最熟悉的游戏角色，被我重新见了一遍",
+        "谁才是最适合被真人化的经典游戏角色？",
+        "把一个游戏宇宙做成真人版合集，哪一位最像？",
+        "童年角色回来了，但这次像真的活过来一样",
+    ],
     "AI油画创作": [
         "用Midjourney生成莫奈风格的中国园林｜提示词全分享",
         "AI能画出梵高的星空吗？我试了100次找到了最佳参数",
@@ -191,6 +293,65 @@ TOPIC_IDEAS = {
         "当代画家工作室大揭秘｜这些空间本身就是艺术",
         "5幅改变当代艺术走向的油画作品",
     ],
+}
+
+RECENT_ACCOUNT_EXPERIENCE = {
+    "validated_direction": "经典游戏IP + 真人化 + 童年回忆，已经明显优于泛审美和时装评论内容。",
+    "winning_content_types": ["游戏IP真人化", "角色萌系短视频", "游戏热点快反"],
+    "avoid_content_types": ["时装周评论", "纯审美解释型封面"],
+    "winning_title_structures": [
+        "如果X来到现实世界……",
+        "我愿称之为「X小可爱」",
+        "趁着热点，把X宇宙拉进现实",
+    ],
+    "best_posting_slots": ["20:00-21:00", "周末20:00-21:30"],
+    "current_rules": [
+        "先让用户一眼认出熟悉IP，再提供反差感",
+        "热点内容不要做纯资讯，要把热点包进真人化/现实化结构",
+        "时装周、广告、审美类内容只有在能强绑定游戏IP时才值得测试",
+        "前台文案不要把制作方式放在第一钩子，优先讲角色、世界观和回忆感",
+        "图片生成 prompt 默认优先现实感，先像真实拍摄，再谈风格化",
+        "评论区要多问『下一期想看谁』这类低门槛互动问题",
+    ],
+}
+
+REALISTIC_IMAGE_PROMPT_RULES = {
+    "core": "当主题涉及人物、角色、IP真人化、现实世界或电影海报感时，默认先给接近现实的版本。优先“像真的拍到”，不要“像高质量CG”。",
+    "must_have": [
+        "ultra photorealistic / grounded realism / believable real-world presence",
+        "natural facial anatomy and body proportions",
+        "lifelike skin, fabric, leather, metal, fur, scale or shell texture",
+        "physically plausible cinematic lighting and shadows",
+        "real-world lens optics and depth of field when appropriate",
+        "subtle imperfections such as pores, wrinkles, wear, weathering, fine texture",
+    ],
+    "avoid": [
+        "plastic skin or waxy texture",
+        "toy-like material response",
+        "overly smooth CGI look",
+        "cartoon shading or plush-like finish",
+        "floating accessories or broken anatomy",
+        "fantasy exaggeration that weakens realism unless the user asks for it",
+    ],
+    "suffix": "grounded in reality, real-world lens optics, subtle imperfections, no plastic skin, no toy-like look, no cartoon shading",
+}
+
+ART_REALISM_PROMPT_RULES = {
+    "core": "旧艺术向内容包默认优先真实作品质感。即使是油画、画家风格或脑洞选题，也尽量先做出像真实作品、真实展陈、真实表面材质的完成度，而不是廉价AI插画感。",
+    "must_have": [
+        "museum-grade realism",
+        "tactile surface detail and believable material depth",
+        "real canvas / paint / paper / wall / frame texture when appropriate",
+        "believable light falloff and shadow behavior",
+        "subtle imperfections, wear, grain, brush ridges, pigment variation",
+    ],
+    "avoid": [
+        "plastic digital gloss",
+        "over-smoothed AI sheen",
+        "toy-like finish",
+        "fake CGI polish that kills artwork texture",
+    ],
+    "suffix": "museum-grade realism, tactile surface detail, believable material depth, believable light falloff, subtle imperfections, no plastic digital gloss, no toy-like finish",
 }
 
 # ==================== 涨粉阶段策略（落地行动版） ====================
@@ -306,7 +467,7 @@ COLD_START_PLAN = [
             "每天在「当代艺术」「油画」「AI绘画」话题下的热门笔记评论区留5条专业评论（不是打广告，是真的分享观点，让同好点进你主页）",
             "尝试一篇「蹭热点」内容：关注近期有没有画家去世/大型拍卖/展览新闻，写一篇快评",
             "做一个「你最想了解哪位画家？」的投票笔记，让粉丝参与选题，增加互动数据",
-            "开始在每篇笔记结尾固定加一句引导语（如「想继续看名画故事和油画审美内容，可以点个关注」）",
+            "开始在每篇笔记结尾固定加一句引导语（如「想继续看游戏IP真人化和童年角色短视频内容，可以点个关注」）",
         ]
     },
     {
@@ -581,7 +742,7 @@ MONETIZATION_ROADMAP = [
 ]
 
 # ==================== 封面制作模板 & Prompt ====================
-# CTR≥8%的封面黄金公式：画作占80% + 3:4竖版 + 大号粗体标题 + 高饱和度
+# CTR≥8%的封面黄金公式：先让人一眼看懂，再追求风格和质感
 
 COVER_TEMPLATES = {
     "画家介绍": {
@@ -757,19 +918,51 @@ COVER_UNIVERSAL_RULES = {
     "dimensions": "1080 × 1440 px（3:4竖版，小红书首选）",
     "title_font": "思源黑体/苹方-粗体/站酷酷黑，字号≥40pt",
     "title_color": "白色（深色底）或深色（浅色底），必须有对比度",
-    "title_position": "底部20%区域（不要放中间，会挡住画面主体）",
+    "title_position": "优先放在主体外的留白区（顶部/底部/左侧均可），不要为了统一模板硬压在画面中央",
     "thumbnail_test": "做完后缩小到手机屏幕的1/4大小看一眼——标题还能看清吗？",
     "color_rules": [
-        "高饱和度的画作 > 低饱和度（信息流里更抢眼）",
-        "暖色调封面点击率普遍高于冷色调",
-        "有人脸/人体的画作点击率最高（但注意平台审核）",
+        "主角清楚 > 色彩花哨。先让人一眼看懂，再追求高级",
+        "单一主体/清晰轮廓 > 多人远景/背景信息过满",
+        "颜色要服务于一句判断，不要为了吸睛盲目堆高饱和",
     ],
     "absolute_donts": [
         "❌ 不要在画作上加太多装饰元素（贴纸/花边/水印）",
         "❌ 不要用横版图做封面（信息流里会被裁切）",
         "❌ 不要用模糊/低分辨率的图（最低1080px宽）",
         "❌ 不要标题文字太小（缩略图看不清=白做）",
-        "❌ 不要每次换模板风格（统一模板=品牌感）",
+        "❌ 不要把封面做成暗色艺术杂志/文艺海报感",
+        "❌ 不要多人远景、复杂背景、信息太满",
+        "❌ 不要用「审美失焦」「高级感逻辑」这类抽象词做封面主标题",
+        "❌ 不要堆英文装饰字、小标签、分析框影响首屏理解",
+    ],
+}
+
+# 最近低CTR复盘后沉淀的封面/标题经验
+RECENT_CTR_PLAYBOOK = {
+    "core_shift": "封面从『解释型/文艺杂志感』切换到『感觉命名型/结论型』，先让用户1秒看懂、3秒想点开。",
+    "title_formula": [
+        "具体对象 + 感觉词 + 结果/疑问",
+        "具体对象 + 反常识判断 + 结果",
+        "先命名感受，再在正文解释原因",
+    ],
+    "cover_dos": [
+        "封面只说一个判断，优先 6-12 个字",
+        "默认只保留一个主体：单人、单件衣服、单个局部、单一轮廓",
+        "优先使用身体感受词和直觉词：像油画、会发光、像活动照、没主角、人被吞了",
+        "标题和封面文案都要让用户一眼知道在讨论什么具体对象",
+        "如果是时装/广告/红毯/画面审美类内容，先打感觉，不先讲理论",
+    ],
+    "cover_donts": [
+        "不要先讲抽象概念，再指望用户点进去理解",
+        "不要使用『有些』『其实』『审美失焦』『高级感逻辑』等泛化或抽象表达做封面主钩子",
+        "不要默认暗色、金色、杂志感就等于高点击",
+        "不要把封面做成分析报告或过度设计的视觉海报",
+    ],
+    "examples": [
+        "为什么这套一上身就像油画？",
+        "明明是高定，为什么像活动照？",
+        "真正贵的是画面",
+        "这套没站住",
     ],
 }
 
@@ -969,7 +1162,7 @@ ACCOUNT_HEALTH_DIMENSIONS = {
     "内容一致性": {
         "weight": 20,
         "description": "发布频率是否稳定，内容是否围绕核心定位",
-        "good": "每周稳定发布3-5篇，内容持续围绕名画故事、油画审美和画家内容展开",
+        "good": "每周稳定发布3-5篇，内容持续围绕游戏IP真人化和童年角色短视频内容展开",
         "bad": "发布不规律，内容跑偏到非相关领域",
     },
     "互动质量": {

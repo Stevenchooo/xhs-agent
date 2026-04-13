@@ -1,7 +1,13 @@
-"""小红书运营Agent - 策略引擎（名画故事·油画审美 专属版）"""
+"""小红书运营Agent - 策略引擎（游戏IP真人化·童年角色短视频）"""
 
 import datetime
-from .config import BEST_POSTING_TIMES, GROWTH_STAGES, CONTENT_TYPES
+import logging
+
+_logger = logging.getLogger(__name__)
+from .config import ACCOUNT_NICHE, BEST_POSTING_TIMES, GROWTH_STAGES, CONTENT_TYPES
+
+# 今日执行 / 数据摘要里「执行要点」条数上限（含运营面板快照合并）
+_EXEC_FOCUS_MAX = 6
 
 
 def _safe_load_tracker_analytics():
@@ -45,6 +51,71 @@ def _safe_load_tracker_analytics():
         )
 
 
+def _is_game_follow_conversion_mode(best_content_type: str, adaptive_profile: dict) -> bool:
+    """判断是否需要把游戏IP真人化账号的转粉动作注入今日执行。"""
+    adaptive_profile = adaptive_profile or {}
+    content_focus = adaptive_profile.get("content_focus") or {}
+    primary_type = content_focus.get("primary_type") or ""
+    secondary_type = content_focus.get("secondary_type") or ""
+    strong_types = {"游戏IP真人化", "角色萌系短视频", "游戏热点快反", "童年回忆盘点"}
+    if best_content_type in strong_types or primary_type in strong_types or secondary_type in strong_types:
+        return True
+    text_blob = " ".join(
+        str(item or "")
+        for item in [
+            ACCOUNT_NICHE,
+            best_content_type,
+            primary_type,
+            secondary_type,
+            adaptive_profile.get("dynamic_audience_hint", ""),
+        ]
+    )
+    return any(keyword in text_blob for keyword in ("游戏", "马里奥", "任天堂", "真人化", "yoshi"))
+
+
+def _build_game_follow_conversion_payload() -> dict:
+    """生成适合当前游戏IP真人化账号的今日转粉动作与模板。"""
+    return {
+        "follow_conversion_todo": [
+            "主页简介改成：经典游戏角色真人化｜把童年IP拉进现实世界｜马里奥/耀西持续更新",
+            "置顶3篇重排成：爆款证明（马里奥真人化）/ 账号代表作（Yoshi小可爱）/ 系列入口（童年角色合集）",
+            "系列名固定用「童年角色来到现实世界」，今天标题继续沿用「如果X来到现实世界」结构",
+            "正文收尾统一成「这个系列我会一直更，下一位你们来点名。」",
+            "发布后15分钟自留首评，置顶评论统一问「下一期你们最想看谁来到现实世界？」并在30分钟内回复前10条评论",
+        ],
+        "follow_conversion_templates": {
+            "series_name": "童年角色来到现实世界",
+            "profile_bio": "经典游戏角色真人化｜把童年IP拉进现实世界｜马里奥/耀西持续更新",
+            "title_formula": "如果X来到现实世界……",
+            "cover_badge": "现实版 / 第N期",
+            "ending_line": "这个系列我会一直更，下一位你们来点名。",
+            "sticky_comment": "下一期你们最想看谁来到现实世界？评论区票高的我先做。",
+            "pinned_posts": [
+                "爆款证明：如果马里奥兄弟真的来到现实世界……",
+                "账号代表作：我愿称之为「Yoshi小可爱」",
+                "系列入口：如果童年游戏角色一起走进现实世界",
+            ],
+        },
+    }
+
+
+def _inject_follow_conversion_plan(result: dict, best_content_type: str, adaptive_profile: dict) -> dict:
+    """把转粉承接动作挂到今日执行结果里。"""
+    result = dict(result or {})
+    result.setdefault("follow_conversion_todo", [])
+    result.setdefault("follow_conversion_templates", {})
+    if not _is_game_follow_conversion_mode(best_content_type, adaptive_profile):
+        return result
+    payload = _build_game_follow_conversion_payload()
+    result["follow_conversion_todo"] = payload["follow_conversion_todo"]
+    result["follow_conversion_templates"] = payload["follow_conversion_templates"]
+    note = (result.get("note") or "").strip()
+    extra_note = "今日除了发内容，还要同步优化主页承接和追更转粉。"
+    if extra_note not in note:
+        result["note"] = f"{note} {extra_note}".strip()
+    return result
+
+
 def _build_snapshot_execution_brief(snapshot: dict) -> dict:
     """根据最新运营面板快照生成今日执行建议。"""
     if not snapshot:
@@ -57,6 +128,12 @@ def _build_snapshot_execution_brief(snapshot: dict) -> dict:
 
     metrics = snapshot.get("metrics", {})
     views = int(metrics.get("views") or 0)
+    likes = int(metrics.get("likes") or 0)
+    comments = int(metrics.get("comments") or 0)
+    saves = int(metrics.get("saves") or 0)
+    shares = int(metrics.get("shares") or 0)
+    cover_ctr = float(metrics.get("cover_ctr") or 0)
+    video_completion = float(metrics.get("video_completion_rate") or 0)
     follower_views = int(metrics.get("viewer_followers") or 0)
     avg_watch_seconds = float(metrics.get("avg_watch_seconds") or 0)
     conversion_rate = float(metrics.get("conversion_rate") or 0)
@@ -83,6 +160,20 @@ def _build_snapshot_execution_brief(snapshot: dict) -> dict:
     if conversion_rate <= 0:
         note_parts.append("当前转化仍未起量，今日目标应先放在公域承接和互动转化")
 
+    if views > 0:
+        comment_rate = comments / views * 100.0
+        share_rate = shares / views * 100.0
+        like_rate = likes / views * 100.0
+        save_rate = saves / views * 100.0
+        if cover_ctr >= 10:
+            note_parts.append(f"统计期内封面点击率约{cover_ctr:.1f}%，公域点击效率较强")
+        if 0 < video_completion < 35:
+            note_parts.append(f"视频完播率约{video_completion:.1f}%，仍有拉升空间")
+        if like_rate >= 2 and comment_rate < 0.25:
+            note_parts.append("点赞不差但评论偏少，讨论承接要加重")
+        if save_rate >= 0.8 and share_rate < 0.45:
+            note_parts.append("收藏尚可但转发偏弱，可加强「可转给同好」的清单或彩蛋结构")
+
     tool_focus = []
     execution_focus = []
 
@@ -101,7 +192,7 @@ def _build_snapshot_execution_brief(snapshot: dict) -> dict:
             {
                 "name": "预发布检查",
                 "reason": "搜索来源偏低，说明标题关键词和搜索承接还不够",
-                "action": "标题补足「名画 / 油画 / 画家 / 色彩 / 提示词」等明确搜索词，避免只有情绪表达没有检索词",
+                "action": "标题补足「游戏IP / 角色名 / 真人版 / 现实世界 / 童年回忆」等明确搜索词，避免只有情绪表达没有检索词",
             }
         )
         execution_focus.append("标题里至少保留1-2个可搜索关键词，正文前两段重复一次核心词，补搜索入口")
@@ -124,16 +215,56 @@ def _build_snapshot_execution_brief(snapshot: dict) -> dict:
                 "action": "结尾放低门槛互动问题，发布后5分钟内自留首评，引导评论和收藏而不是直接卖货",
             }
         )
-        execution_focus.append("评论区首条放“你更想看哪类内容/哪位画家”的问题，把今日目标定成互动抬权重")
+        execution_focus.append("评论区首条放“你更想看哪类内容/哪位角色”的问题，把今日目标定成互动抬权重")
 
     if avg_watch_seconds and avg_watch_seconds < 25:
         execution_focus.append("前三句改成更短更狠的悬念句，尽量在第一屏完成钩子，先把停留再往上拉")
 
+    if views > 0 and cover_ctr >= 10:
+        tool_focus.append(
+            {
+                "name": "互动话术/组件",
+                "reason": "封面点击率已经较高，下一阶段应把权重放在评论与转发",
+                "action": "文末固定投票/二选一；彩蛋或冷知识做成可截图清单；发布后15分钟内自留首评接梗",
+            }
+        )
+        execution_focus.append(
+            "在保CTR的前提下，今天至少一条用「你站哪边/票选下期」收尾，并准备一张可保存的清单图促转发"
+        )
+
+    if views > 0 and 0 < video_completion < 35:
+        tool_focus.append(
+            {
+                "name": "预发布检查",
+                "reason": "完播率偏低时，算法更看前段停留与整体观看完成度",
+                "action": "前3秒只放一个强冲突点；中段加一次口播或字幕引导「先藏后看」",
+            }
+        )
+        execution_focus.append("视频类稿件把信息峰值压在前15%，避免开头铺垫过长拖垮完播")
+
+    if views > 0:
+        cr = comments / views * 100.0
+        sr = shares / views * 100.0
+        if cr < 0.25:
+            execution_focus.append("正文结尾加轻量讨论题（例如「漏了哪个彩蛋你来说」），并准时蹲评回复前10条")
+        if sr < 0.4:
+            execution_focus.append("加一句「转给同好」式收尾，或做一条「只有老玩家才懂」的短清单降低转发门槛")
+
+    seen_tool = set()
+    dedup_tools = []
+    for item in tool_focus:
+        n = item.get("name") or ""
+        if n and n not in seen_tool:
+            seen_tool.add(n)
+            dedup_tools.append(item)
+        elif not n:
+            dedup_tools.append(item)
+
     return {
         "has_data": bool(note_parts),
         "note": "；".join(note_parts) + "。",
-        "tool_focus": tool_focus[:5],
-        "execution_focus": execution_focus[:4],
+        "tool_focus": dedup_tools[:5],
+        "execution_focus": execution_focus[:_EXEC_FOCUS_MAX],
     }
 
 
@@ -156,13 +287,13 @@ def get_data_driven_execution_brief() -> dict:
     snapshot_brief = _build_snapshot_execution_brief(snapshot)
 
     if not has_data and snapshot_brief.get("has_data"):
-        result = snapshot_brief
+        result = snapshot_brief.copy()
         if adaptive_profile.get("weekly_update_note"):
             result["note"] = f"{adaptive_profile['weekly_update_note']} {result['note']}".strip()
-        return result
+        return _inject_follow_conversion_plan(result, insights.get("best_content_type"), adaptive_profile)
 
     if not has_data:
-        return {
+        result = {
             "has_data": False,
             "note": adaptive_profile.get("weekly_update_note") or "暂无有效追踪数据。请先在「数据复盘/笔记追踪」录入至少一篇笔记的浏览与互动，再解锁定向优化。",
             "tool_focus": [
@@ -177,6 +308,7 @@ def get_data_driven_execution_brief() -> dict:
                 "首篇数据录入后，明天再看工具优先级是否变化",
             ],
         }
+        return _inject_follow_conversion_plan(result, insights.get("best_content_type"), adaptive_profile)
 
     tool_focus = []
     execution_focus = []
@@ -235,9 +367,24 @@ def get_data_driven_execution_brief() -> dict:
         )
         execution_focus.append("加一句「转给同好」式结尾，或做一张可保存的清单图")
 
+    best_ct = insights.get("best_content_type")
+    worst_ct = insights.get("worst_content_type")
+    if best_ct == "游戏IP真人化":
+        note_parts.append("经典游戏IP真人化已经跑出明显优势")
+        tool_focus.append(
+            {
+                "name": "选题方向优先级",
+                "reason": "当前最强数据已经明确来自熟悉游戏IP + 真人化/来到现实世界结构",
+                "action": "今天优先做马里奥/耀西/经典角色真人化，不做纯资讯或抽象审美表达",
+            }
+        )
+        execution_focus.append("至少保留 1 条『如果X来到现实世界』或『把X拉进现实』结构的主力内容")
+    if worst_ct == "时装周评论":
+        note_parts.append("时装周评论方向明显拖后腿")
+        execution_focus.append("除非能和游戏IP或超级热点强绑定，否则先暂停时装周评论类内容")
+
     # 有数据但上述问题不突出：用历史洞察兜底
     if not note_parts:
-        best_ct = insights.get("best_content_type")
         best_t = insights.get("best_posting_time")
         note = (
             f"近{tracked}篇有数据，均浏览约{avg_views}。"
@@ -263,18 +410,19 @@ def get_data_driven_execution_brief() -> dict:
             "has_data": True,
             "note": note,
             "tool_focus": tool_focus[:5],
-            "execution_focus": execution_focus[:4],
+            "execution_focus": execution_focus[:_EXEC_FOCUS_MAX],
         }
         if snapshot_brief.get("has_data"):
             result["note"] = f"{snapshot_brief['note']} {result['note']}".strip()
             result["tool_focus"] = (snapshot_brief.get("tool_focus") or []) + result["tool_focus"]
             result["execution_focus"] = (snapshot_brief.get("execution_focus") or []) + result["execution_focus"]
-        return {
+        result = {
             "has_data": result["has_data"],
             "note": result["note"],
             "tool_focus": result["tool_focus"][:5],
-            "execution_focus": result["execution_focus"][:4],
+            "execution_focus": result["execution_focus"][:_EXEC_FOCUS_MAX],
         }
+        return _inject_follow_conversion_plan(result, best_ct, adaptive_profile)
 
     note = "；".join(note_parts) + "。"
     # 去重工具名（保留顺序）
@@ -289,7 +437,7 @@ def get_data_driven_execution_brief() -> dict:
         "has_data": True,
         "note": note,
         "tool_focus": unique_tools[:5],
-        "execution_focus": execution_focus[:4],
+        "execution_focus": execution_focus[:_EXEC_FOCUS_MAX],
     }
     if snapshot_brief.get("has_data"):
         result["note"] = f"{snapshot_brief['note']} {result['note']}".strip()
@@ -306,15 +454,16 @@ def get_data_driven_execution_brief() -> dict:
         result["tool_focus"] = deduped_tools[:5]
     if adaptive_profile.get("weekly_update_note"):
         result["note"] = f"{adaptive_profile['weekly_update_note']} {result['note']}".strip()
-    for line in (adaptive_profile.get("weekly_actions") or [])[:2]:
+    for line in (adaptive_profile.get("weekly_actions") or [])[:3]:
         if line and line not in result["execution_focus"]:
             result["execution_focus"].append(line)
-    return {
+    result = {
         "has_data": result["has_data"],
         "note": result["note"],
         "tool_focus": result["tool_focus"][:5],
-        "execution_focus": result["execution_focus"][:4],
+        "execution_focus": result["execution_focus"][:_EXEC_FOCUS_MAX],
     }
+    return _inject_follow_conversion_plan(result, best_ct, adaptive_profile)
 
 
 def get_current_stage(follower_count: int) -> dict:
@@ -351,7 +500,7 @@ def get_weekly_plan(category: str, follower_count: int) -> list:
     except Exception:
         adaptive_profile = {}
 
-    # 艺术账号的发布节奏（不宜太密，每篇要保证图片质量）
+    # 发布节奏：冷启动期以稳定试错为主，成长期开始做系列化
     if stage_name == "冷启动期":
         posts_per_day = {0: 2, 1: 1, 2: 2, 3: 1, 4: 2, 5: 1, 6: 1}
     elif stage_name == "成长期":
@@ -359,28 +508,44 @@ def get_weekly_plan(category: str, follower_count: int) -> list:
     else:
         posts_per_day = {0: 1, 1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 0}
 
-    # 为一周安排不同的内容类型组合（确保多样性）
-    weekly_content_rotation = [
-        # 周一：AI创作 + 画家赏析（新一周用新鲜内容开场）
-        ["AI油画创作过程", "画家作品赏析"],
-        # 周二：色彩解析（干货日）
-        ["色彩/构图解析"],
-        # 周三：AI对比 + 教程（话题性+实用性）
-        ["AI vs 真实油画对比", "AI绘画教程"],
-        # 周四：画家故事（故事日）
-        ["画家故事/八卦"],
-        # 周五：合集 + AI创作（冲数据日）
-        ["艺术清单合集", "AI油画创作过程"],
-        # 周六：轻松赏析（周末轻内容）
-        ["画家作品赏析"],
-        # 周日：展览/总结
-        ["展览/拍卖资讯"],
-    ]
-
     focus = adaptive_profile.get("content_focus") or {}
     primary_type = focus.get("primary_type")
     secondary_type = focus.get("secondary_type")
     weak_type = focus.get("weak_type")
+    game_mode = (
+        "游戏" in category
+        or "游戏" in ACCOUNT_NICHE
+        or primary_type in {"游戏IP真人化", "角色萌系短视频", "游戏热点快反", "童年回忆盘点", "制作过程/幕后"}
+    )
+
+    # 为一周安排不同的内容类型组合（确保多样性）
+    if game_mode:
+        weekly_content_rotation = [
+            ["游戏IP真人化"],
+            ["角色萌系短视频"],
+            ["游戏热点快反"],
+            ["游戏IP真人化"],
+            ["童年回忆盘点", "制作过程/幕后"],
+            ["角色萌系短视频"],
+            ["游戏IP真人化"],
+        ]
+    else:
+        weekly_content_rotation = [
+            # 周一：AI创作 + 画家赏析（新一周用新鲜内容开场）
+            ["AI油画创作过程", "画家作品赏析"],
+            # 周二：色彩解析（干货日）
+            ["色彩/构图解析"],
+            # 周三：AI对比 + 教程（话题性+实用性）
+            ["AI vs 真实油画对比", "AI绘画教程"],
+            # 周四：画家故事（故事日）
+            ["画家故事/八卦"],
+            # 周五：合集 + AI创作（冲数据日）
+            ["艺术清单合集", "AI油画创作过程"],
+            # 周六：轻松赏析（周末轻内容）
+            ["画家作品赏析"],
+            # 周日：展览/总结
+            ["展览/拍卖资讯"],
+        ]
 
     if primary_type in CONTENT_TYPES:
         weekly_content_rotation[0] = [primary_type]
@@ -445,6 +610,38 @@ def get_weekly_plan(category: str, follower_count: int) -> list:
 def _get_topic_hint(content_type: str, day_of_week: int) -> str:
     """为每天的内容类型提供选题提示"""
     hints = {
+        "游戏IP真人化": [
+            "把一个经典角色拉进现实世界，做出真人化反差",
+            "选最近有热度的游戏IP，用『如果来到现实世界』结构承接",
+            "围绕同一个宇宙做多角色展开，放大熟悉感和投票欲",
+            "把童年角色做成真人电影海报感，强调角色还原度",
+            "让同一个角色在写实、电影、萌系三种真人风格里对比",
+        ],
+        "角色萌系短视频": [
+            "选一个最有表情记忆点的角色，做短平快可爱向内容",
+            "聚焦一张脸、一个动作或一个笑点，不要信息过满",
+            "用一句『我愿称之为……』式标题做情绪命名",
+            "贴脸镜头、表情特写、可爱暴击都更容易起互动",
+        ],
+        "游戏热点快反": [
+            "把今天的游戏热点重新翻译成『真人化后会怎样』",
+            "不要纯复述新闻，要让热点服务于角色想象和用户回忆",
+            "优先蹭 Switch、任天堂、新作角色、经典IP重启这类热点",
+            "热点角度尽量在 2 小时内完成发布，先快后精修",
+            "马力欧大电影/银河新物料类热点，用「彩蛋清单+真人化想象」双结构，比单条资讯更易评转",
+        ],
+        "童年回忆盘点": [
+            "做一个宇宙内多角色合集，让用户评论最想看谁",
+            "用『那些年最熟悉的角色』切入，增加收藏和转发",
+            "把角色按公主组 / 反派组 / 萌物组分组盘点",
+            "合集最后一张放投票页，直接拉评论区互动",
+        ],
+        "制作过程/幕后": [
+            "拆解真人化画面是怎么一步步生成出来的",
+            "展示翻车稿到成稿，增强可信度和收藏价值",
+            "给出可复用的 Prompt 或画面结构关键词",
+            "强调你是如何保住角色辨识度而不是只做漂亮图",
+        ],
         "AI油画创作过程": [
             "尝试用AI模仿一位当代画家的风格",
             "用AI画一组季节主题的油画",
@@ -498,18 +695,40 @@ def _get_topic_hint(content_type: str, day_of_week: int) -> str:
 
 def _get_daily_tasks(stage_name: str, day_of_week: int) -> list:
     """根据阶段和星期生成每日任务（艺术账号专属）"""
-    base_tasks = [
-        "🎨 浏览小红书「当代艺术/油画/AI绘画」热门笔记 15分钟",
-        "💬 回复所有新评论和私信（艺术讨论要有深度）",
-        "👀 检查昨日笔记数据（浏览/点赞/收藏/评论）",
-    ]
+    game_mode = "游戏" in ACCOUNT_NICHE
+    if game_mode:
+        base_tasks = [
+            "🎮 浏览小红书「马里奥/任天堂/游戏角色/真人版」热门笔记 15分钟",
+            "💬 回复所有新评论和私信（优先接『下一期想看谁』这类互动）",
+            "👀 检查昨日笔记数据（曝光/观看/点赞/收藏/评论）",
+        ]
+    else:
+        base_tasks = [
+            "🎨 浏览小红书「当代艺术/油画/AI绘画」热门笔记 15分钟",
+            "💬 回复所有新评论和私信（艺术讨论要有深度）",
+            "👀 检查昨日笔记数据（浏览/点赞/收藏/评论）",
+        ]
 
-    if stage_name == "冷启动期":
+    if stage_name == "冷启动期" and game_mode:
+        base_tasks.extend([
+            "🔍 收集 3-5 个熟悉游戏角色或同宇宙角色作为备选素材",
+            "📝 记录 3 个能直接复用的标题结构（如「如果X来到现实世界」）",
+            "🤝 在 #马里奥 #任天堂 #游戏角色真人版 话题下评论5-8条（优先留有信息量的评论）",
+            "🧪 准备 1 条主力真人化内容 + 1 条低成本萌系短内容",
+        ])
+    elif stage_name == "冷启动期":
         base_tasks.extend([
             "🔍 收集3-5张高清画作素材（注意版权）",
             "📝 研究1个海外当代画家，为下一篇笔记积累素材",
             "🤝 在 #当代艺术 #油画 话题下评论5-8条（留专业见解）",
             "🖼️ 用AI生成1-2张油画作品，积累素材库",
+        ])
+    elif stage_name == "成长期" and game_mode:
+        base_tasks.extend([
+            "📊 分析本周哪类内容（真人化/热点快反/萌系单角色）数据最好",
+            "🎯 优化个人简介：突出「游戏IP真人化」和「童年回忆/真人版」标签",
+            "🤝 找 2 个游戏/角色创作类同量级博主互动",
+            "💡 关注 1 个游戏资讯源（任天堂/主机/经典IP）",
         ])
     elif stage_name == "成长期":
         base_tasks.extend([
@@ -517,6 +736,12 @@ def _get_daily_tasks(stage_name: str, day_of_week: int) -> list:
             "🎯 优化个人简介：突出「AI油画」和「当代艺术」标签",
             "🤝 找2个艺术/设计类同量级博主互动",
             "💡 关注1个海外艺术资讯源（Artsy/Artnet等）",
+        ])
+    elif stage_name == "爆发期" and game_mode:
+        base_tasks.extend([
+            "📈 关注本周游戏圈热点（新作/预告/角色热搜/平台消息）",
+            "🤝 维护粉丝群，策划一次角色投票或宇宙站队话题",
+            "💡 策划下一个系列内容（如「如果任天堂角色来到现实世界」）",
         ])
     elif stage_name == "爆发期":
         base_tasks.extend([
@@ -526,16 +751,23 @@ def _get_daily_tasks(stage_name: str, day_of_week: int) -> list:
         ])
 
     # 周末特殊任务
-    if day_of_week >= 5:
+    if day_of_week >= 5 and game_mode:
+        base_tasks.append("📋 复盘本周数据：哪些角色/宇宙/标题结构最受欢迎？")
+        base_tasks.append("🎬 批量准备下周的角色主视觉和封面素材")
+    elif day_of_week >= 5:
         base_tasks.append("📋 复盘本周数据：哪些画家/风格最受欢迎？")
         base_tasks.append("🖼️ 批量制作下周的封面图和AI油画素材")
 
     # 每周三：素材日
-    if day_of_week == 2:
+    if day_of_week == 2 and game_mode:
+        base_tasks.append("🔄 更新角色素材库 + 收集本周可蹭的游戏热点")
+    elif day_of_week == 2:
         base_tasks.append("🔄 更新AI油画素材库 + 收集海外画家新动态")
 
     # 每周五：蹭热点
-    if day_of_week == 4:
+    if day_of_week == 4 and game_mode:
+        base_tasks.append("🔥 检查是否有可蹭的游戏热点话题（但不要只做纯资讯）")
+    elif day_of_week == 4:
         base_tasks.append("🔥 检查是否有可蹭的艺术热点话题")
 
     # 数据驱动的 1–2 条动态任务（无数据或异常时静默跳过）
@@ -545,7 +777,7 @@ def _get_daily_tasks(stage_name: str, day_of_week: int) -> list:
             if line:
                 base_tasks.append(f"📊（数据建议）{line}")
     except Exception:
-        pass
+        _logger.debug("non-critical error suppressed", exc_info=True)
 
     return base_tasks
 
@@ -662,7 +894,7 @@ def get_optimization_tips(metrics: dict) -> list:
 
 
 def get_title_formulas() -> list:
-    """返回爆款标题公式（名画故事·油画审美专属）"""
+    """返回爆款标题公式（游戏IP真人化·童年角色短视频专属）"""
     return [
         {
             "formula": "反常理/金钱对比 + 悬念/质疑",

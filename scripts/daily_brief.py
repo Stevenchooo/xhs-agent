@@ -35,6 +35,35 @@ def main():
             print(f"  {i}. {line}")
         print()
 
+    if pkg.get("follow_conversion_todo"):
+        print("=" * 60)
+        print("🎯 今日转粉 TODO：")
+        for i, line in enumerate(pkg["follow_conversion_todo"], 1):
+            print(f"  {i}. {line}")
+        print()
+
+    templates = pkg.get("follow_conversion_templates") or {}
+    if templates:
+        print("=" * 60)
+        print("🧩 转粉固定模板：")
+        if templates.get("series_name"):
+            print(f"  · 系列名：{templates['series_name']}")
+        if templates.get("profile_bio"):
+            print(f"  · 主页简介：{templates['profile_bio']}")
+        if templates.get("title_formula"):
+            print(f"  · 标题结构：{templates['title_formula']}")
+        if templates.get("cover_badge"):
+            print(f"  · 封面角标：{templates['cover_badge']}")
+        if templates.get("ending_line"):
+            print(f"  · 正文收尾：{templates['ending_line']}")
+        if templates.get("sticky_comment"):
+            print(f"  · 置顶评论：{templates['sticky_comment']}")
+        if templates.get("pinned_posts"):
+            print("  · 置顶3篇：")
+            for item in templates["pinned_posts"]:
+                print(f"    - {item}")
+        print()
+
     print("=" * 60)
     print("📝 标题：")
     print(pkg.get('title', ''))

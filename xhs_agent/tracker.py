@@ -56,6 +56,13 @@ def _next_id(items: list) -> int:
     return max_id + 1
 
 
+def _get_metrics_store():
+    """惰性加载轻量指标数据库，避免在模块导入阶段引入额外副作用。"""
+    from . import metrics_store
+
+    return metrics_store
+
+
 # ==================== 账号信息管理 ====================
 
 def save_account_info(info: dict):
@@ -72,6 +79,58 @@ def get_account_info() -> dict:
     """获取账号基本信息"""
     data = _load_json(ANALYTICS_FILE)
     return data.get("account_info", {})
+
+
+def sync_latest_review_snapshot(review_data: dict) -> dict:
+    """把最新周复盘同步到系统主数据，并写入变化历史库。"""
+    timestamp = datetime.datetime.now().isoformat()
+    data = _load_json(ANALYTICS_FILE)
+    account_info = data.get("account_info") or {}
+    followers = int(review_data.get("followers", 0) or 0)
+    account_info["followers"] = followers
+    account_info["updated_at"] = timestamp
+    data["account_info"] = account_info
+    latest_review = {
+        **review_data,
+        "recorded_at": timestamp,
+    }
+    data["latest_review_snapshot"] = latest_review
+    _save_json(ANALYTICS_FILE, data)
+    _get_metrics_store().record_weekly_review(latest_review)
+    return latest_review
+
+
+def get_latest_review_snapshot() -> dict:
+    """获取最近一次周复盘快照。"""
+    data = _load_json(ANALYTICS_FILE)
+    latest = data.get("latest_review_snapshot")
+    if latest:
+        return latest
+    return _get_metrics_store().get_latest_weekly_review()
+
+
+def sync_latest_publish_snapshot(publish_data: dict) -> dict:
+    """把最近一次发文概览同步到系统主数据。"""
+    timestamp = datetime.datetime.now().isoformat()
+    data = _load_json(ANALYTICS_FILE)
+    latest_publish = {
+        **publish_data,
+        "recorded_at": timestamp,
+    }
+    data["latest_publish_snapshot"] = latest_publish
+    _save_json(ANALYTICS_FILE, data)
+    return latest_publish
+
+
+def get_latest_publish_snapshot() -> dict:
+    """获取最近一次发文概览快照。"""
+    data = _load_json(ANALYTICS_FILE)
+    return data.get("latest_publish_snapshot") or {}
+
+
+def get_recent_metric_changes(limit: int = 20, source_type: str = None) -> list:
+    """读取最近的关键指标变化记录。"""
+    return _get_metrics_store().get_recent_metric_changes(limit=limit, source_type=source_type)
 
 
 # ==================== 笔记数据记录 ====================
@@ -267,6 +326,7 @@ def save_operations_snapshot(snapshot: dict) -> dict:
     data["snapshots"] = snapshots
     data["latest"] = enriched
     _save_json(OPERATIONS_SNAPSHOT_FILE, data)
+    _get_metrics_store().record_operations_snapshot(enriched)
     return enriched
 
 
@@ -409,6 +469,8 @@ def _build_adaptive_tool_profile() -> dict:
     sources = snapshot.get("traffic_sources") or []
     primary_source = sources[0] if sources else {}
     peak_hour = (snapshot.get("viewer_time") or {}).get("peak_hour_label", "")
+    period = snapshot.get("period") or {}
+    p_start, p_end = period.get("start", ""), period.get("end", "")
 
     update_note_parts = [f"本周工具已按当前账号状态自动刷新：{followers}粉，累计{total_posts}篇笔记"]
     if primary_type:
@@ -424,6 +486,20 @@ def _build_adaptive_tool_profile() -> dict:
     if peak_hour:
         update_note_parts.append(f"高峰时段集中在{peak_hour}")
 
+    views_panel = int(metrics.get("views") or 0)
+    likes_p = int(metrics.get("likes") or 0)
+    comments_p = int(metrics.get("comments") or 0)
+    shares_p = int(metrics.get("shares") or 0)
+    saves_p = int(metrics.get("saves") or 0)
+    ctr_panel = float(metrics.get("cover_ctr") or 0)
+    vcr_panel = float(metrics.get("video_completion_rate") or 0)
+    if views_panel > 0 and p_start and p_end:
+        update_note_parts.append(
+            f"创作者中心近7日（{p_start}–{p_end}）观看约{views_panel:,}、赞{likes_p}、藏{saves_p}、评{comments_p}、分享{shares_p}"
+            + (f"、封面点击率约{ctr_panel:.1f}%" if ctr_panel > 0 else "")
+            + (f"、视频完播约{vcr_panel:.1f}%" if vcr_panel > 0 else "")
+        )
+
     weekly_actions = []
     if primary_type:
         weekly_actions.append(f"本周至少安排 2 篇「{primary_type}」内容，持续放大已验证有效的方向。")
@@ -438,8 +514,42 @@ def _build_adaptive_tool_profile() -> dict:
     if metrics.get("avg_watch_seconds") and float(metrics.get("avg_watch_seconds", 0)) < 25:
         weekly_actions.append("本周所有主推内容都要把前 3 句改短，先抢停留再谈信息量。")
 
-    dynamic_audience_hint = "近期账号更适合做『先钩子、再解释、最后互动』的名画故事型内容。"
-    if best_titles:
+    if primary_type == "游戏IP真人化":
+        weekly_actions.insert(0, "本周至少连发 2 篇「经典游戏IP + 来到现实世界/真人化」内容，先吃透已经验证过的结构。")
+        if secondary_type in {"游戏热点快反", "角色萌系短视频"}:
+            weekly_actions.append(f"辅助方向优先做「{secondary_type}」，但表达仍要围绕熟悉IP和反差感。")
+    if weak_type == "时装周评论":
+        weekly_actions.append("时装周评论类内容先降频，除非能和游戏IP或强热点直接绑定。")
+
+    if views_panel > 0:
+        cr = comments_p / views_panel * 100.0
+        sr = shares_p / views_panel * 100.0
+        if ctr_panel >= 10:
+            weekly_actions.insert(
+                0,
+                "近一周封面点击已经偏强：本周主目标是「评论+转发」——多用投票/二选一/彩蛋清单，少做纯信息展示。",
+            )
+        if 0 < vcr_panel < 35:
+            weekly_actions.append(
+                f"视频完播约{vcr_panel:.1f}%仍有空间：热点/快反类稿件前3秒只留一个强钩子，中段加一次「先藏后看」引导。",
+            )
+        if cr < 0.25:
+            weekly_actions.append(
+                "周度评论承接偏弱：每条主推文末固定留「票选下期角色/你站哪边」，发布后15分钟内自留首评。",
+            )
+        if sr < 0.45:
+            weekly_actions.append(
+                "转发偏弱：每周至少1条做成「可转给同好」的冷知识或彩蛋合集，封面带「转需」式信息锚点。",
+            )
+        if primary_type == "游戏IP真人化":
+            weekly_actions.append(
+                "可蹭《超级马力欧》电影/银河相关话题时，用「真人化/来到现实世界」承接，避免只做资讯复读。",
+            )
+
+    dynamic_audience_hint = "近期账号更适合做『先钩子、再解释、最后互动』的反差型内容。"
+    if primary_type == "游戏IP真人化":
+        dynamic_audience_hint = "近期用户最吃『经典游戏IP + 真人化 + 童年回忆』，强反差标题明显强于单纯审美解释。"
+    elif best_titles:
         dynamic_audience_hint = f"近期用户更容易被『{best_titles[0]}』这类反差型标题吸引，说明故事性和认知反转仍是主轴。"
 
     return {
@@ -465,7 +575,7 @@ def _build_adaptive_tool_profile() -> dict:
             "peak_hour_label": peak_hour,
         },
         "weekly_update_note": "；".join(update_note_parts) + "。",
-        "weekly_actions": weekly_actions[:5],
+        "weekly_actions": weekly_actions[:14],
         "dynamic_audience_hint": dynamic_audience_hint,
     }
 
@@ -1470,7 +1580,7 @@ def analyze_traffic_pool(metrics: dict) -> dict:
             f"💬 互动率仅{eng_rate}%（需≥5%）→ 内容价值或互动引导不足",
             "❓ 文末必须有互动问题（算法检测到有问题句式会提升推荐）",
             "📝 发布后5分钟内在评论区自己留1条（≥15字）补充信息",
-            "⭐ 增加可收藏的干货：Prompt分享、画家清单、参数设置",
+            "⭐ 增加可收藏的干货：Prompt分享、角色清单、参数设置",
         ])
     if checks["completion_rate"]["passed"] is not None and not checks["completion_rate"]["passed"]:
         breakthrough_actions.extend([
